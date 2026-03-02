@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="RAPCA">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1a3d2e">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect fill='%231a3d2e' width='180' height='180' rx='40'/%3E%3Ctext x='90' y='125' text-anchor='middle' font-size='100'%3E🌿%3C/text%3E%3C/svg%3E">
+<title>RAPCA Campo</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#f5f5f0;color:#1a3d2e;min-height:100vh}
+.header{background:linear-gradient(135deg,#1a3d2e,#2d5a3d);color:#fff;padding:15px;text-align:center;position:sticky;top:0;z-index:100}
+.header h1{font-size:1.3rem}
+.sync-status{font-size:.75rem;padding:4px 10px;border-radius:12px}
+.sync-status.online{background:#27ae60}
+.sync-status.offline{background:#e74c3c}
+.nav{display:flex;background:#fff;border-bottom:1px solid #ddd}
+.nav-btn{flex:1;padding:12px;border:none;background:#fff;font-size:.9rem;cursor:pointer;border-bottom:3px solid transparent}
+.nav-btn.active{border-bottom-color:#5b8c5a;color:#5b8c5a;font-weight:bold}
+.page{display:none;padding:15px;padding-bottom:100px}
+.page.active{display:block}
+.card{background:#fff;border-radius:10px;padding:15px;margin-bottom:12px;box-shadow:0 2px 6px rgba(0,0,0,.1)}
+.card-title{font-weight:bold;font-size:1rem;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid #eee;color:#1a3d2e;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+.form-group{margin-bottom:12px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.form-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+label{display:block;font-size:.7rem;font-weight:bold;color:#666;margin-bottom:3px;text-transform:uppercase}
+input,select,textarea{width:100%;padding:10px;border:2px solid #ddd;border-radius:8px;font-size:1rem}
+input:focus,select:focus{outline:none;border-color:#5b8c5a}
+.section-content{display:none;margin-top:10px}
+.section-content.open{display:block}
+.btn{width:100%;padding:16px;border:none;border-radius:10px;font-size:1.1rem;font-weight:bold;cursor:pointer;margin-top:10px}
+.btn-vp{background:#88d8b0;color:#1a3d2e}
+.btn-ev{background:#fd9853;color:#fff}
+.btn-secondary{background:#f39c12;color:#fff}
+.btn-danger{background:#e74c3c;color:#fff}
+.btn-exit{background:#7f8c8d;color:#fff}
+.btn-camera{background:#2ecc71;color:#fff;padding:12px 20px;font-size:1rem;display:inline-flex;align-items:center;gap:8px;border-radius:8px;border:none;cursor:pointer;margin:5px}
+.btn-camera.vp{background:#88d8b0;color:#1a3d2e}
+.btn-camera.ev{background:#fd9853;color:#fff}
+.menu-btn{display:block;padding:25px;margin-bottom:15px;background:#fff;border-radius:12px;color:#1a3d2e;font-size:1.2rem;font-weight:bold;box-shadow:0 2px 8px rgba(0,0,0,.1);text-align:center;cursor:pointer;border:none;width:100%}
+.menu-btn.vp{border-left:5px solid #88d8b0}
+.menu-btn.ev{border-left:5px solid #fd9853}
+.menu-btn.panel{border-left:5px solid #5b8c5a}
+.pending-badge{background:#e74c3c;color:#fff;padding:3px 10px;border-radius:12px;font-size:.85rem;margin-left:8px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:14px 28px;border-radius:10px;color:#fff;display:none;z-index:1000;max-width:90%;text-align:center;font-weight:bold}
+.toast.show{display:block}
+.toast.success{background:#27ae60}
+.toast.error{background:#e74c3c}
+.toast.info{background:#3498db}
+.record-item{background:#fff;border-radius:10px;padding:15px;margin-bottom:10px;box-shadow:0 2px 4px rgba(0,0,0,.1)}
+.record-item .tipo{display:inline-block;padding:3px 10px;border-radius:5px;font-size:.75rem;font-weight:bold}
+.record-item .tipo.vp{background:#d4edda;color:#155724}
+.record-item .tipo.ev{background:#ffe5cc;color:#8a4500}
+.record-item .info{font-size:.85rem;margin-top:6px;color:#666}
+.record-item .actions{margin-top:10px;display:flex;flex-wrap:wrap;gap:5px}
+.record-item .btn-small{padding:8px 12px;font-size:.8rem;border-radius:6px;border:none;cursor:pointer}
+.record-item .btn-small.pdf{background:#9b59b6;color:#fff}
+.record-item .btn-small.edit{background:#3498db;color:#fff}
+.record-item .btn-small.delete{background:#e74c3c;color:#fff}
+.loading{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,.95);display:none;justify-content:center;align-items:center;z-index:2000}
+.loading.show{display:flex}
+.spinner{width:50px;height:50px;border:5px solid #eee;border-top-color:#5b8c5a;border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.transecto-btns{display:flex;gap:10px;margin-top:5px}
+.transecto-btn{flex:1;padding:15px;border:2px solid #ddd;background:#fff;border-radius:10px;font-weight:bold;font-size:1.1rem;cursor:pointer}
+.transecto-btn.active{background:#fd9853;color:#fff;border-color:#fd9853}
+.planta-box{background:#f9f9f9;border-radius:8px;padding:12px;margin-bottom:12px;border-left:4px solid #5b8c5a}
+.planta-box .planta-header{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.planta-box .planta-num{background:#5b8c5a;color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:bold}
+.planta-box .notas-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.planta-box .nota-item{text-align:center}
+.planta-box .nota-item label{font-size:.7rem}
+.planta-box .nota-item select{padding:12px 4px;font-size:1.1rem;font-weight:bold;border-radius:8px}
+.palatable-box{background:#fff9f0;border-radius:8px;padding:12px;margin-bottom:12px;border-left:4px solid #fd9853}
+.palatable-box .notas-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.palatable-box .nota-item{text-align:center}
+.palatable-box .nota-item select{padding:12px 4px;font-size:1.1rem;font-weight:bold;width:100%;border-radius:8px}
+.palatable-box .planta-media{text-align:right;margin-top:8px;font-size:.85rem;color:#fd9853;font-weight:bold}
+.herb-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.herb-item{text-align:center}
+.herb-item select{padding:12px 4px;font-size:1.1rem;font-weight:bold;width:100%;border-radius:8px}
+.autocomplete-wrapper{position:relative}
+.autocomplete-list{position:absolute;top:100%;left:0;right:0;background:#fff;border:2px solid #5b8c5a;border-top:none;border-radius:0 0 8px 8px;max-height:200px;overflow-y:auto;z-index:50;display:none}
+.autocomplete-list.show{display:block}
+.autocomplete-item{padding:12px;cursor:pointer;border-bottom:1px solid #eee}
+.autocomplete-item:hover{background:#e8f5e9}
+.resumen-matorral{background:#e8f5e9;border-radius:8px;padding:12px;margin-top:15px}
+.resumen-matorral .valores{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.resumen-matorral .valor-item{background:#fff;padding:8px;border-radius:6px;text-align:center}
+.resumen-matorral .valor-item .numero{font-size:1.3rem;font-weight:bold;color:#5b8c5a}
+.fotos-lista{background:#f0f0f0;border-radius:8px;padding:10px;margin-top:10px;min-height:40px}
+.fotos-lista .foto-tag{display:inline-block;background:#5b8c5a;color:#fff;padding:4px 10px;border-radius:15px;margin:3px;font-size:.85rem}
+.camera-modal{position:fixed;top:0;left:0;right:0;bottom:0;background:#000;z-index:3000;display:none;flex-direction:column}
+.camera-modal.show{display:flex}
+.camera-modal .camera-container{flex:1;position:relative;overflow:hidden}
+.camera-modal video{width:100%;height:100%;object-fit:cover}
+.camera-modal .camera-overlay{position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none}
+.camera-modal .overlay-compass{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.85);color:#fff;padding:8px 12px;border-radius:8px;font-size:1rem;font-weight:bold;display:flex;align-items:center;gap:5px}
+.camera-modal .overlay-map{position:absolute;bottom:10px;left:10px;width:140px;height:105px;background:#fff;border-radius:8px;overflow:hidden;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+.camera-modal .overlay-map iframe{width:100%;height:100%;border:0;pointer-events:none}
+.camera-modal .overlay-map .no-map{width:100%;height:100%;background:#e0e0e0;display:flex;align-items:center;justify-content:center;font-size:.8rem;color:#666}
+.camera-modal .overlay-info{position:absolute;bottom:10px;right:10px;background:rgba(0,0,0,.85);color:#fff;padding:8px 12px;border-radius:8px;text-align:right;font-size:.85rem;line-height:1.4}
+.camera-modal .overlay-info .codigo{font-weight:bold;font-size:1.1rem;color:#88d8b0}
+.camera-modal .camera-controls{height:100px;background:#1a3d2e;display:flex;align-items:center;justify-content:space-around;padding:10px;flex-shrink:0}
+.camera-modal .btn-capture{width:70px;height:70px;border-radius:50%;background:#fff;border:5px solid #5b8c5a;cursor:pointer}
+.camera-modal .btn-close-cam{background:#e74c3c;color:#fff;border:none;padding:12px 24px;border-radius:8px;cursor:pointer;font-size:1rem;font-weight:bold}
+.camera-modal .camera-info{color:#fff;font-size:.9rem;text-align:center;max-width:120px}
+</style>
+</head>
+<body>
+<div class="header"><h1>🌿 RAPCA Campo</h1><span class="sync-status" id="syncStatus">...</span></div>
+<nav class="nav"><button class="nav-btn active" onclick="showPage('menu')">Menú</button><button class="nav-btn" onclick="showPage('vp')">VP</button><button class="nav-btn" onclick="showPage('ev')">EV</button><button class="nav-btn" onclick="showPage('panel')">Panel<span id="pendingBadge" class="pending-badge" style="display:none">0</span></button></nav>
+
+<div id="page-menu" class="page active"><div style="max-width:400px;margin:20px auto"><button id="installBtn" class="menu-btn" style="display:none;background:#27ae60;color:#fff;border-left:5px solid #1e8449" onclick="instalarApp()">📲 Instalar App</button><button class="menu-btn vp" onclick="showPage('vp')">🔍 VP - Visitas Previas</button><button class="menu-btn ev" onclick="showPage('ev')">📊 EV - Evaluación</button><button class="menu-btn panel" onclick="showPage('panel')">📋 Panel de Registros</button><div class="card" style="margin-top:25px;text-align:center"><p style="margin-bottom:10px;color:#666">Pendientes: <strong id="pendingCount">0</strong></p><button class="btn btn-secondary" onclick="syncPending()">🔄 Sincronizar</button><button class="btn btn-exit" onclick="salirApp()">🚪 Guardar y Salir</button></div></div></div>
+
+<div id="page-vp" class="page">
+<div class="card"><div class="card-title">📍 Identificación</div><div class="form-group"><label>Fecha</label><input type="date" id="vp-fecha"></div><div class="form-row"><div class="form-group"><label>ID Unidad *</label><input type="text" id="vp-unidad" placeholder="23AJE01" oninput="this.value=this.value.toUpperCase();actualizarZonaDesdeUnidad('vp')"></div><div class="form-group"><label>ID Zona (auto)</label><input type="text" id="vp-zona" readonly style="background:#e9e9e9;color:#666"></div></div></div>
+<div class="card"><div class="card-title">🐄 Grados de Pastoreo</div><div class="form-row-3"><div class="form-group"><label>Punto 1</label><select id="vp-past1"><option value="">--</option><option>NP</option><option>PL</option><option>PM</option><option>PI</option><option>PMI</option></select></div><div class="form-group"><label>Punto 2</label><select id="vp-past2"><option value="">--</option><option>NP</option><option>PL</option><option>PM</option><option>PI</option><option>PMI</option></select></div><div class="form-group"><label>Punto 3</label><select id="vp-past3"><option value="">--</option><option>NP</option><option>PL</option><option>PM</option><option>PI</option><option>PMI</option></select></div></div></div>
+<div class="card"><div class="card-title">👁️ Observación Estado Pastoreo</div><div class="form-row-3"><div class="form-group"><label>Señal Paso</label><select id="vp-senal"><option value="">--</option><option>A</option><option>B</option><option>M</option><option>N</option></select></div><div class="form-group"><label>Veredas</label><select id="vp-veredas"><option value="">--</option><option>A</option><option>B</option><option>M</option><option>N</option></select></div><div class="form-group"><label>Cagarrutas</label><select id="vp-cagarrutas"><option value="">--</option><option>A</option><option>B</option><option>M</option><option>N</option></select></div></div></div>
+<div class="card"><div class="card-title">📷 Fotos</div><p style="font-size:.85rem;color:#666;margin-bottom:10px">Fotos varias (ilimitadas)</p><button class="btn-camera vp" onclick="abrirCamara('VP','general')">📷 Añadir Foto VP</button><div class="fotos-lista" id="vp-fotos-lista"></div><input type="hidden" id="vp-fotos"><p style="font-size:.85rem;color:#666;margin:15px 0 10px">Fotos Comparativas</p><div class="form-row"><div class="form-group"><label>Waypoint 1</label><button class="btn-camera vp" onclick="abrirCamara('VP','W1')" style="width:100%">📷 W1</button><div class="fotos-lista" id="vp-fc1-lista"></div><input type="hidden" id="vp-fc1"></div><div class="form-group"><label>Waypoint 2</label><button class="btn-camera vp" onclick="abrirCamara('VP','W2')" style="width:100%">📷 W2</button><div class="fotos-lista" id="vp-fc2-lista"></div><input type="hidden" id="vp-fc2"></div></div></div>
+<div class="card"><div class="card-title">📝 Observaciones</div><textarea id="vp-obs" rows="3" placeholder="Notas..."></textarea></div>
+<div class="card"><button class="btn btn-vp" onclick="guardarVP()">💾 Guardar VP</button></div>
+</div>
+
+<div id="page-ev" class="page">
+<div class="card"><div class="card-title">📍 Identificación</div><div class="form-group"><label>Fecha</label><input type="date" id="ev-fecha"></div><div class="form-row"><div class="form-group"><label>ID Unidad *</label><input type="text" id="ev-unidad" placeholder="23AJE01" oninput="this.value=this.value.toUpperCase();actualizarZonaDesdeUnidad('ev')"></div><div class="form-group"><label>ID Zona (auto)</label><input type="text" id="ev-zona" readonly style="background:#e9e9e9;color:#666"></div></div><div class="form-group"><label>Transecto</label><div class="transecto-btns"><button type="button" class="transecto-btn active" onclick="setTransecto(1)">T1</button><button type="button" class="transecto-btn" onclick="setTransecto(2)">T2</button><button type="button" class="transecto-btn" onclick="setTransecto(3)">T3</button></div></div></div>
+<div class="card"><div class="card-title" onclick="toggleSection('ev-plantas-section')"><span>🌱 Plantas</span><div><span id="contadorPlantas" style="background:#5b8c5a;color:#fff;padding:2px 8px;border-radius:10px;font-size:.8rem">0</span> <span id="mediaPlantas" style="background:#3498db;color:#fff;padding:2px 8px;border-radius:10px;font-size:.8rem">x̄ -</span></div></div><div class="section-content open" id="ev-plantas-section"></div></div>
+<div class="card"><div class="card-title" onclick="toggleSection('ev-palatables-section')"><span>🌿 Palatables</span><span id="mediaPalatables" style="background:#fd9853;color:#fff;padding:2px 8px;border-radius:10px;font-size:.8rem">x̄ -</span></div><div class="section-content open" id="ev-palatables-section"></div></div>
+<div class="card"><div class="card-title">🐄 Pastoreo</div><div class="form-row-3"><div class="form-group"><label>Punto 1</label><select id="ev-past1"><option value="">--</option><option>NP</option><option>PL</option><option>PM</option><option>PI</option><option>PMI</option></select></div><div class="form-group"><label>Punto 2</label><select id="ev-past2"><option value="">--</option><option>NP</option><option>PL</option><option>PM</option><option>PI</option><option>PMI</option></select></div><div class="form-group"><label>Punto 3</label><select id="ev-past3"><option value="">--</option><option>NP</option><option>PL</option><option>PM</option><option>PI</option><option>PMI</option></select></div></div></div>
+<div class="card"><div class="card-title"><span>🌾 Herbáceas</span><span id="mediaHerbaceas" style="background:#3498db;color:#fff;padding:2px 8px;border-radius:10px;font-size:.8rem">x̄ -</span></div><div class="herb-grid" id="ev-herb"></div></div>
+<div class="card"><div class="card-title">🌲 Matorralización</div><p style="font-size:.8rem;color:#666;margin-bottom:10px">Punto 1</p><div class="form-row-3"><div class="form-group"><label>Cob %</label><input type="number" id="ev-mat1cob" min="0" max="100" oninput="actualizarResumenMatorral()"></div><div class="form-group"><label>Alt cm</label><input type="number" id="ev-mat1alt" min="0" oninput="actualizarResumenMatorral()"></div><div class="form-group autocomplete-wrapper"><label>Especie</label><input type="text" id="ev-mat1esp" autocomplete="off" onfocus="showAutocomplete(this)" oninput="filterAutocomplete(this)"><div class="autocomplete-list" id="ac-ev-mat1esp"></div></div></div><p style="font-size:.8rem;color:#666;margin:10px 0">Punto 2</p><div class="form-row-3"><div class="form-group"><label>Cob %</label><input type="number" id="ev-mat2cob" min="0" max="100" oninput="actualizarResumenMatorral()"></div><div class="form-group"><label>Alt cm</label><input type="number" id="ev-mat2alt" min="0" oninput="actualizarResumenMatorral()"></div><div class="form-group autocomplete-wrapper"><label>Especie</label><input type="text" id="ev-mat2esp" autocomplete="off" onfocus="showAutocomplete(this)" oninput="filterAutocomplete(this)"><div class="autocomplete-list" id="ac-ev-mat2esp"></div></div></div><div class="resumen-matorral"><div style="font-weight:bold;margin-bottom:8px">📊 Resumen</div><div class="valores"><div class="valor-item"><div style="font-size:.7rem;color:#666">Media Cob %</div><div class="numero" id="mediaCob">-</div></div><div class="valor-item"><div style="font-size:.7rem;color:#666">Media Alt cm</div><div class="numero" id="mediaAlt">-</div></div><div class="valor-item"><div style="font-size:.7rem;color:#666">Vol m³/ha</div><div class="numero" id="volumenMatorral" style="color:#27ae60">-</div></div></div><div id="especiesMatorral" style="margin-top:8px;font-size:.85rem;color:#666">Especies: -</div></div></div>
+<div class="card"><div class="card-title">📷 Fotos</div><p style="font-size:.85rem;color:#666;margin-bottom:10px">Fotos varias (ilimitadas)</p><button class="btn-camera ev" onclick="abrirCamara('EV','general')">📷 Añadir Foto EV</button><div class="fotos-lista" id="ev-fotos-lista"></div><input type="hidden" id="ev-fotos"><p style="font-size:.85rem;color:#666;margin:15px 0 10px">Fotos Comparativas</p><div class="form-row"><div class="form-group"><label>Waypoint 1</label><button class="btn-camera ev" onclick="abrirCamara('EV','W1')" style="width:100%">📷 W1</button><div class="fotos-lista" id="ev-fc1-lista"></div><input type="hidden" id="ev-fc1"></div><div class="form-group"><label>Waypoint 2</label><button class="btn-camera ev" onclick="abrirCamara('EV','W2')" style="width:100%">📷 W2</button><div class="fotos-lista" id="ev-fc2-lista"></div><input type="hidden" id="ev-fc2"></div></div></div>
+<div class="card"><div class="card-title">📝 Observaciones</div><textarea id="ev-obs" rows="3" placeholder="Notas..."></textarea></div>
+<div class="card"><button class="btn btn-ev" onclick="guardarEV()" id="btnGuardarEV">💾 Guardar EV - T1</button></div>
+</div>
+
+<div id="page-panel" class="page"><div class="card"><div class="card-title">📋 Registros Guardados</div><button class="btn btn-secondary" onclick="syncPending()">🔄 Sincronizar</button><button class="btn" style="background:#9b59b6;color:#fff" onclick="exportarTodosPDF()">📄 Exportar PDF</button><div id="panelList" style="margin-top:15px"></div></div><div class="card"><button class="btn btn-danger" onclick="borrarTodo()">🗑️ Borrar todo</button></div></div>
+
+<div class="camera-modal" id="cameraModal">
+<div class="camera-container">
+<video id="cameraVideo" autoplay playsinline></video>
+<div class="camera-overlay">
+<div class="overlay-compass" id="overlayCompass">🧭 N 0°</div>
+<div class="overlay-map"><div class="no-map" id="mapContainer">📍 Mapa</div></div>
+<div class="overlay-info"><div class="codigo" id="overlayCode">--</div><div id="overlayCoords">--</div></div>
+</div>
+</div>
+<div class="camera-controls">
+<button class="btn-close-cam" onclick="cerrarCamara()">✖ Cancelar</button>
+<div class="camera-info" id="cameraInfo">--</div>
+<button class="btn-capture" id="btnCapture" onclick="capturarFoto()"></button>
+</div>
+</div>
+<canvas id="photoCanvas" style="display:none"></canvas>
+
+<div class="loading" id="loading"><div class="spinner"></div></div>
+<div class="toast" id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>
