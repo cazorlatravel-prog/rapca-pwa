@@ -37,7 +37,7 @@ var fotosCacheMemoria={}; // Cache en memoria como respaldo
 function initFotosDB(){
   return new Promise(function(resolve,reject){
     if(!window.indexedDB){console.warn('IndexedDB no soportada');resolve();return;}
-    var request=indexedDB.open('RAPCA_Fotos',2);
+    var request=indexedDB.open('RAPCA_Fotos',3);
     request.onerror=function(e){console.error('Error IndexedDB:',e);resolve();};
     request.onsuccess=function(e){fotosDB=e.target.result;console.log('IndexedDB lista');resolve();};
     request.onupgradeneeded=function(e){
@@ -49,6 +49,10 @@ function initFotosDB(){
       if(!db.objectStoreNames.contains('subidas_pendientes')){
         db.createObjectStore('subidas_pendientes',{keyPath:'codigo'});
         console.log('ObjectStore subidas_pendientes creado');
+      }
+      if(!db.objectStoreNames.contains('capas_kml')){
+        db.createObjectStore('capas_kml',{keyPath:'nombre'});
+        console.log('ObjectStore capas_kml creado');
       }
     };
   });
@@ -261,13 +265,45 @@ function actualizarMarcadoresMapa(){
     });
   }
 
+  // Marcadores de fotos comparativas (W1/W2) con icono de cámara
+  if(filtroTipo!=='infra'){
+    var allRs=getRegistros();
+    if(filtroTipo)allRs=allRs.filter(function(r){return r.tipo===filtroTipo;});
+    if(filtroOp)allRs=allRs.filter(function(r){return r.operador_email===filtroOp;});
+    if(filtroDesde)allRs=allRs.filter(function(r){return r.fecha>=filtroDesde;});
+    allRs.forEach(function(r){
+      if(!r.lat||!r.lon)return;
+      var d=r.datos||{};
+      if(!d.fotosComp)return;
+      d.fotosComp.forEach(function(fc){
+        if(!fc.numero||!fc.waypoint)return;
+        var codigos=fc.numero.split(',').map(function(x){return x.trim();}).filter(function(x){return x;});
+        if(codigos.length===0)return;
+        var mk=L.marker([r.lat,r.lon],{icon:L.divIcon({className:'',html:'<div style="background:#e74c3c;width:18px;height:18px;border-radius:4px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:10px">📷</div>',iconSize:[18,18],iconAnchor:[9,9]})});
+        mk.bindPopup('<b>📷 '+fc.waypoint+' — '+r.unidad+'</b><br>'+r.fecha+'<br>Fotos: '+codigos.join(', '));
+        clusterGroup.addLayer(mk);
+      });
+    });
+  }
+
   // Marcadores de infraestructuras
   if(!filtroTipo||filtroTipo==='infra'){
     var infras=getInfras();
     infras.forEach(function(inf){
       if(!inf.lat||!inf.lon)return;
+      // Calcular indicadores de estado
+      var allRegs=getRegistros();
+      var vpCount=0,evCount=0,fotoCount=0;
+      allRegs.forEach(function(r){
+        if(r.unidad===inf.idUnidad){
+          if(r.tipo==='VP')vpCount++;else evCount++;
+          var dd=r.datos||{};
+          if(dd.fotos)fotoCount+=dd.fotos.split(',').filter(function(x){return x.trim();}).length;
+          if(dd.fotosComp)dd.fotosComp.forEach(function(fc){if(fc.numero)fotoCount+=fc.numero.split(',').filter(function(x){return x.trim();}).length;});
+        }
+      });
       var mk=L.marker([parseFloat(inf.lat),parseFloat(inf.lon)],{icon:L.divIcon({className:'',html:'<div style="background:#8e44ad;width:14px;height:14px;border-radius:7px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',iconSize:[14,14],iconAnchor:[7,7]})});
-      mk.bindPopup('<b>'+(inf.idUnidad||'--')+'</b><br>'+(inf.nombre||'')+'<br>'+(inf.municipio||''));
+      mk.bindPopup('<b>'+(inf.idUnidad||'--')+'</b><br>'+(inf.nombre||'')+'<br>'+(inf.municipio||'')+'<br><small>VP: '+vpCount+' | EV: '+evCount+' | Fotos: '+fotoCount+'</small>');
       clusterGroup.addLayer(mk);
     });
   }
@@ -304,7 +340,7 @@ function procesarKML(kmlText,nombre){
   if(controlCapas)controlCapas.addOverlay(layer,nombre);
   mapaLeaflet.fitBounds(layer.getBounds(),{padding:[30,30]});
   actualizarListaCapas();
-  guardarCapasKMLLocal();
+  guardarCapasKMLLocal();guardarCapaKMLenDB(nombre,kmlText);
   showToast(nombre+': '+n+' elementos','success');
 }
 function parsearKML(kmlText){
@@ -410,7 +446,7 @@ function eliminarCapaMapa(nombre){
     mapaLeaflet.removeLayer(capasKML[nombre]);
     if(controlCapas)controlCapas.removeLayer(capasKML[nombre]);
     delete capasKML[nombre];delete capasKMLRaw[nombre];
-    actualizarListaCapas();guardarCapasKMLLocal();
+    actualizarListaCapas();guardarCapasKMLLocal();eliminarCapaKMLdeDB(nombre);
     showToast('Capa eliminada','success');
   }
 }
@@ -420,6 +456,7 @@ function limpiarCapasMapa(){
   Object.keys(capasKML).forEach(function(k){mapaLeaflet.removeLayer(capasKML[k]);if(controlCapas)controlCapas.removeLayer(capasKML[k]);});
   capasKML={};capasKMLRaw={};
   actualizarListaCapas();guardarCapasKMLLocal();
+  if(fotosDB){try{var tx=fotosDB.transaction(['capas_kml'],'readwrite');tx.objectStore('capas_kml').clear();}catch(e){}}
   showToast('Capas eliminadas','success');
 }
 function centrarEnMiPosicion(){
@@ -433,12 +470,16 @@ function guardarCapasKMLLocal(){
   try{localStorage.setItem('rapca_kml_capas',JSON.stringify(capasKMLRaw));}catch(e){console.warn('KML demasiado grande para localStorage');}
 }
 function cargarCapasKMLGuardadas(){
+  // Primero cargar de localStorage
   var saved=localStorage.getItem('rapca_kml_capas');
-  if(!saved)return;
-  try{var data=JSON.parse(saved);Object.keys(data).forEach(function(nombre){
-    var layer=parsearKML(data[nombre]);
-    if(layer.getLayers().length>0){layer.addTo(mapaLeaflet);capasKML[nombre]=layer;capasKMLRaw[nombre]=data[nombre];if(controlCapas)controlCapas.addOverlay(layer,nombre);}
-  });actualizarListaCapas();}catch(e){console.error('Error cargando KML guardados:',e);}
+  if(saved){
+    try{var data=JSON.parse(saved);Object.keys(data).forEach(function(nombre){
+      var layer=parsearKML(data[nombre]);
+      if(layer.getLayers().length>0){layer.addTo(mapaLeaflet);capasKML[nombre]=layer;capasKMLRaw[nombre]=data[nombre];if(controlCapas)controlCapas.addOverlay(layer,nombre);}
+    });actualizarListaCapas();}catch(e){console.error('Error cargando KML guardados:',e);}
+  }
+  // Luego cargar de IndexedDB (más capas que pueden no caber en localStorage)
+  cargarCapasKMLdesdeDB();
 }
 
 window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();deferredPrompt=e;mostrarBotonInstalar();});
@@ -1093,10 +1134,29 @@ function cargarListaInfra(){
   if(cnt)cnt.textContent=filtrados.length;
   if(filtrados.length===0){el.innerHTML='<p style="text-align:center;color:#888;padding:15px">Sin infraestructuras</p>';return;}
   var h='';
+  // Pre-calcular indicadores de estado
+  var allRegs=getRegistros();
+  var statsMap={};
+  allRegs.forEach(function(reg){
+    if(!reg.unidad)return;
+    if(!statsMap[reg.unidad])statsMap[reg.unidad]={vp:0,ev:0,fotos:0};
+    if(reg.tipo==='VP')statsMap[reg.unidad].vp++;else statsMap[reg.unidad].ev++;
+    var dd=reg.datos||{};
+    if(dd.fotos)statsMap[reg.unidad].fotos+=dd.fotos.split(',').filter(function(x){return x.trim();}).length;
+    if(dd.fotosComp)dd.fotosComp.forEach(function(fc){if(fc.numero)statsMap[reg.unidad].fotos+=fc.numero.split(',').filter(function(x){return x.trim();}).length;});
+  });
   filtrados.slice(0,50).forEach(function(r){
+    var st=statsMap[r.idUnidad]||{vp:0,ev:0,fotos:0};
     h+='<div class="record-card infra"><div class="rc-title">'+(r.idUnidad||'--')+' — '+(r.nombre||'Sin nombre')+'</div>';
     h+='<div class="rc-info">'+(r.municipio||'-')+' | '+(r.provincia||'-')+' | Zona: '+(r.idZona||'-')+'</div>';
-    h+='<div class="rc-actions"><button class="btn-small edit" onclick="editarInfra('+r.id+')">✏️</button><button class="btn-small delete" onclick="eliminarInfra('+r.id+')">🗑️</button></div></div>';
+    if(st.vp>0||st.ev>0||st.fotos>0){
+      h+='<div class="state-badges">';
+      if(st.vp>0)h+='<span class="state-badge vp-badge">VP:'+st.vp+'</span>';
+      if(st.ev>0)h+='<span class="state-badge ev-badge">EV:'+st.ev+'</span>';
+      if(st.fotos>0)h+='<span class="state-badge foto-badge">📷'+st.fotos+'</span>';
+      h+='</div>';
+    }
+    h+='<div class="rc-actions"><button class="btn-small edit" onclick="editarInfra('+r.id+')">✏️</button><button class="btn-small" style="background:#e67e22;color:#fff" onclick="descargarZIPUnidad(\''+((r.idUnidad||'').replace(/'/g,"\\'"))+'\')">📦</button><button class="btn-small delete" onclick="eliminarInfra('+r.id+')">🗑️</button></div></div>';
   });
   if(filtrados.length>50)h+='<p style="text-align:center;color:#888;padding:10px">Mostrando 50 de '+filtrados.length+'</p>';
   el.innerHTML=h;
@@ -1192,4 +1252,208 @@ function exportarExcel(){
   XLSX.utils.book_append_sheet(wb,ws,'Infraestructuras');
   XLSX.writeFile(wb,'RAPCA_Infraestructuras.xlsx');
   showToast('Exportado '+lista.length+' registros','success');
+}
+
+// --- Búsqueda Global (Ctrl+K) ---
+var filtroBusqueda='';
+document.addEventListener('keydown',function(e){
+  if((e.ctrlKey||e.metaKey)&&e.key==='k'){e.preventDefault();abrirBusqueda();}
+  if(e.key==='Escape'){cerrarBusqueda();}
+});
+function abrirBusqueda(){
+  document.getElementById('searchOverlay').classList.add('show');
+  var inp=document.getElementById('searchInput');
+  inp.value='';inp.focus();
+  filtroBusqueda='';
+  document.querySelectorAll('.search-filters button').forEach(function(b,i){b.classList.toggle('active',i===0);});
+  document.getElementById('searchResults').innerHTML='<p style="text-align:center;color:#888;padding:30px;font-size:.9rem">Escribe para buscar...</p>';
+}
+function cerrarBusqueda(){document.getElementById('searchOverlay').classList.remove('show');}
+function setFiltroBusqueda(f){
+  filtroBusqueda=f;
+  document.querySelectorAll('.search-filters button').forEach(function(b){
+    var tipo=b.textContent.toLowerCase().trim();
+    b.classList.toggle('active',(f===''&&tipo==='todo')||(f==='infra'&&tipo==='infra')||(f==='registro'&&tipo==='registros')||(f==='operador'&&tipo==='operadores'));
+  });
+  ejecutarBusqueda();
+}
+function ejecutarBusqueda(){
+  var q=document.getElementById('searchInput').value.trim().toLowerCase();
+  var el=document.getElementById('searchResults');
+  if(q.length<2){el.innerHTML='<p style="text-align:center;color:#888;padding:30px;font-size:.9rem">Escribe al menos 2 caracteres...</p>';return;}
+  var resultados=[];
+  // Buscar infraestructuras
+  if(!filtroBusqueda||filtroBusqueda==='infra'){
+    getInfras().forEach(function(inf){
+      var texto=(inf.idUnidad+' '+inf.nombre+' '+inf.municipio+' '+inf.provincia+' '+inf.idZona+' '+(inf.pn||'')).toLowerCase();
+      if(texto.indexOf(q)!==-1)resultados.push({tipo:'infra',titulo:(inf.idUnidad||'--')+' — '+(inf.nombre||'Sin nombre'),sub:(inf.municipio||'-')+' | '+(inf.provincia||'-')+' | Zona: '+(inf.idZona||'-'),id:inf.id});
+    });
+  }
+  // Buscar registros
+  if(!filtroBusqueda||filtroBusqueda==='registro'){
+    getRegistros().forEach(function(r){
+      var texto=(r.tipo+' '+r.zona+' '+r.unidad+' '+r.fecha+' '+(r.operador_nombre||'')+' '+(r.datos.observaciones||'')).toLowerCase();
+      if(texto.indexOf(q)!==-1)resultados.push({tipo:'registro',titulo:r.tipo+' '+r.zona+' > '+r.unidad+(r.transecto?' ('+r.transecto+')':''),sub:r.fecha+' | '+(r.operador_nombre||'--')+' | '+(r.enviado?'Enviado':'Pendiente'),id:r.id,regTipo:r.tipo});
+    });
+  }
+  // Buscar operadores
+  if(!filtroBusqueda||filtroBusqueda==='operador'){
+    var ops={};
+    getRegistros().forEach(function(r){
+      if(r.operador_nombre&&!ops[r.operador_email||r.operador_nombre]){
+        var texto=(r.operador_nombre+' '+(r.operador_email||'')).toLowerCase();
+        if(texto.indexOf(q)!==-1){ops[r.operador_email||r.operador_nombre]=true;resultados.push({tipo:'operador',titulo:r.operador_nombre,sub:r.operador_email||'--',email:r.operador_email});}
+      }
+    });
+  }
+  if(resultados.length===0){el.innerHTML='<p style="text-align:center;color:#888;padding:30px;font-size:.9rem">Sin resultados para "'+q+'"</p>';return;}
+  var h='';
+  resultados.slice(0,30).forEach(function(r){
+    var icon=r.tipo==='infra'?'infra':r.tipo==='registro'?'registro':'operador';
+    var emoji=r.tipo==='infra'?'🏗️':r.tipo==='registro'?(r.regTipo==='VP'?'🔍':'📊'):'👤';
+    h+='<div class="search-result-item" onclick="irAResultado(\''+r.tipo+'\','+JSON.stringify(r.id||'').replace(/"/g,'&quot;')+')">';
+    h+='<div class="sr-icon '+icon+'">'+emoji+'</div>';
+    h+='<div><div class="sr-title">'+r.titulo+'</div><div class="sr-sub">'+r.sub+'</div></div></div>';
+  });
+  if(resultados.length>30)h+='<p style="text-align:center;color:#888;padding:10px;font-size:.8rem">'+resultados.length+' resultados (mostrando 30)</p>';
+  el.innerHTML=h;
+}
+function irAResultado(tipo,id){
+  cerrarBusqueda();
+  if(tipo==='infra'){showPage('infra');if(id)editarInfra(id);}
+  else if(tipo==='registro'){showPage('panel');}
+  else if(tipo==='operador'){showPage('dashboard');}
+}
+
+// --- Descarga Masiva ZIP ---
+async function descargarZIPUnidad(unidad){
+  if(typeof JSZip==='undefined'){showToast('JSZip no cargado','error');return;}
+  showLoading(true);
+  var fotos=await obtenerTodasLasFotos();
+  var rs=getRegistros().filter(function(r){return r.unidad===unidad;});
+  var zip=new JSZip();
+  var count=0;
+  rs.forEach(function(r){
+    var d=r.datos||{};
+    var codigos=[];
+    if(d.fotos)d.fotos.split(',').map(function(x){return x.trim();}).filter(function(x){return x;}).forEach(function(c){codigos.push(c);});
+    if(d.fotosComp)d.fotosComp.forEach(function(fc){if(fc.numero)fc.numero.split(',').map(function(x){return x.trim();}).filter(function(x){return x;}).forEach(function(c){codigos.push(c);});});
+    codigos.forEach(function(c){
+      var src=fotos[c];
+      if(src){
+        var base64=src.split(',')[1];
+        if(base64){
+          var folder=r.fecha+'_'+r.tipo+(r.transecto?'_'+r.transecto:'');
+          zip.file(folder+'/'+c+'.jpg',base64,{base64:true});
+          count++;
+        }
+      }
+    });
+  });
+  if(count===0){showLoading(false);showToast('Sin fotos para '+unidad,'info');return;}
+  zip.generateAsync({type:'blob'}).then(function(blob){
+    var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='RAPCA_'+unidad+'_fotos.zip';a.click();
+    showLoading(false);showToast(count+' fotos descargadas','success');
+  }).catch(function(e){showLoading(false);showToast('Error ZIP: '+e.message,'error');});
+}
+async function descargarZIPTodas(){
+  if(typeof JSZip==='undefined'){showToast('JSZip no cargado','error');return;}
+  var rs=getRegistros();
+  // Filtrar por usuario si no es admin
+  if(sesionActual&&sesionActual.rol!=='admin'){rs=rs.filter(function(r){return r.operador_email===sesionActual.email;});}
+  if(rs.length===0){showToast('Sin registros','info');return;}
+  showLoading(true);
+  var fotos=await obtenerTodasLasFotos();
+  var zip=new JSZip();
+  var count=0;
+  rs.forEach(function(r){
+    var d=r.datos||{};
+    var codigos=[];
+    if(d.fotos)d.fotos.split(',').map(function(x){return x.trim();}).filter(function(x){return x;}).forEach(function(c){codigos.push(c);});
+    if(d.fotosComp)d.fotosComp.forEach(function(fc){if(fc.numero)fc.numero.split(',').map(function(x){return x.trim();}).filter(function(x){return x;}).forEach(function(c){codigos.push(c);});});
+    codigos.forEach(function(c){
+      var src=fotos[c];
+      if(src){
+        var base64=src.split(',')[1];
+        if(base64){
+          var folder=r.unidad+'/'+r.fecha+'_'+r.tipo+(r.transecto?'_'+r.transecto:'');
+          zip.file(folder+'/'+c+'.jpg',base64,{base64:true});
+          count++;
+        }
+      }
+    });
+  });
+  if(count===0){showLoading(false);showToast('Sin fotos disponibles','info');return;}
+  zip.generateAsync({type:'blob'}).then(function(blob){
+    var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='RAPCA_todas_fotos.zip';a.click();
+    showLoading(false);showToast(count+' fotos en ZIP','success');
+  }).catch(function(e){showLoading(false);showToast('Error ZIP: '+e.message,'error');});
+}
+
+// --- Exportar KML desde registros ---
+function exportarKML(){
+  var rs=getRegistros().filter(function(r){return r.lat&&r.lon;});
+  var infras=getInfras().filter(function(i){return i.lat&&i.lon;});
+  if(rs.length===0&&infras.length===0){showToast('Sin datos con coordenadas','info');return;}
+  var kml='<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n<name>RAPCA Campo</name>\n';
+  // Estilos
+  kml+='<Style id="vp"><IconStyle><color>ff88d8b0</color><scale>1</scale></IconStyle></Style>\n';
+  kml+='<Style id="ev"><IconStyle><color>fffd9853</color><scale>1</scale></IconStyle></Style>\n';
+  kml+='<Style id="infra"><IconStyle><color>ff8e44ad</color><scale>1</scale></IconStyle></Style>\n';
+  // Registros
+  rs.forEach(function(r){
+    kml+='<Placemark>\n<name>'+r.tipo+' '+r.unidad+'</name>\n';
+    kml+='<description>'+r.fecha+(r.operador_nombre?' - '+r.operador_nombre:'')+(r.transecto?' ('+r.transecto+')':'')+'</description>\n';
+    kml+='<styleUrl>#'+r.tipo.toLowerCase()+'</styleUrl>\n';
+    kml+='<Point><coordinates>'+r.lon+','+r.lat+',0</coordinates></Point>\n';
+    kml+='</Placemark>\n';
+  });
+  // Infraestructuras
+  infras.forEach(function(i){
+    kml+='<Placemark>\n<name>'+(i.idUnidad||'--')+'</name>\n';
+    kml+='<description>'+(i.nombre||'')+(i.municipio?' - '+i.municipio:'')+'</description>\n';
+    kml+='<styleUrl>#infra</styleUrl>\n';
+    kml+='<Point><coordinates>'+i.lon+','+i.lat+',0</coordinates></Point>\n';
+    kml+='</Placemark>\n';
+  });
+  kml+='</Document>\n</kml>';
+  var blob=new Blob([kml],{type:'application/vnd.google-earth.kml+xml'});
+  var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='RAPCA_Campo.kml';a.click();
+  showToast('KML exportado','success');
+}
+
+// --- KML/KMZ Persistence en IndexedDB ---
+function guardarCapaKMLenDB(nombre,kmlText){
+  if(!fotosDB)return;
+  try{
+    var tx=fotosDB.transaction(['capas_kml'],'readwrite');
+    tx.objectStore('capas_kml').put({nombre:nombre,data:kmlText,fecha:Date.now()});
+  }catch(e){console.error('Error guardando KML en DB:',e);}
+}
+function eliminarCapaKMLdeDB(nombre){
+  if(!fotosDB)return;
+  try{
+    var tx=fotosDB.transaction(['capas_kml'],'readwrite');
+    tx.objectStore('capas_kml').delete(nombre);
+  }catch(e){}
+}
+function cargarCapasKMLdesdeDB(){
+  if(!fotosDB)return;
+  try{
+    var tx=fotosDB.transaction(['capas_kml'],'readonly');
+    var req=tx.objectStore('capas_kml').getAll();
+    req.onsuccess=function(){
+      var capas=req.result||[];
+      capas.forEach(function(c){
+        if(!capasKML[c.nombre]){
+          var layer=parsearKML(c.data);
+          if(layer.getLayers().length>0){
+            layer.addTo(mapaLeaflet);capasKML[c.nombre]=layer;capasKMLRaw[c.nombre]=c.data;
+            if(controlCapas)controlCapas.addOverlay(layer,c.nombre);
+          }
+        }
+      });
+      actualizarListaCapas();
+    };
+  }catch(e){console.error('Error cargando KML de DB:',e);}
 }

@@ -224,6 +224,31 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .menu-btn.dash{border-left:5px solid #f39c12}
 .menu-btn.timeline{border-left:5px solid #e74c3c}
 .menu-btn.comparador{border-left:5px solid #1abc9c}
+/* Global Search Modal */
+.search-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:4500;display:none;align-items:flex-start;justify-content:center;padding:60px 15px 15px}
+.search-overlay.show{display:flex}
+.search-box{background:#fff;border-radius:14px;width:100%;max-width:500px;box-shadow:0 10px 40px rgba(0,0,0,.35);overflow:hidden;max-height:80vh;display:flex;flex-direction:column}
+.search-box .search-input-wrap{display:flex;align-items:center;padding:12px 15px;border-bottom:2px solid #eee;gap:10px}
+.search-box .search-input-wrap input{flex:1;border:none;font-size:1.1rem;outline:none;padding:6px 0}
+.search-box .search-input-wrap .search-kbd{background:#f0f0f0;padding:2px 8px;border-radius:4px;font-size:.7rem;color:#888;font-family:monospace;white-space:nowrap}
+.search-box .search-filters{display:flex;gap:6px;padding:8px 15px;border-bottom:1px solid #eee;flex-wrap:wrap}
+.search-box .search-filters button{padding:4px 12px;border:2px solid #ddd;background:#fff;border-radius:20px;font-size:.75rem;cursor:pointer;white-space:nowrap}
+.search-box .search-filters button.active{border-color:#5b8c5a;background:#e8f5e9;color:#1a3d2e;font-weight:bold}
+.search-results{overflow-y:auto;flex:1;max-height:60vh}
+.search-result-item{padding:12px 15px;border-bottom:1px solid #f0f0f0;cursor:pointer;display:flex;gap:10px;align-items:center}
+.search-result-item:hover{background:#f5f5f0}
+.search-result-item .sr-icon{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0}
+.search-result-item .sr-icon.infra{background:#f3e5f5;color:#8e44ad}
+.search-result-item .sr-icon.registro{background:#e8f5e9;color:#27ae60}
+.search-result-item .sr-icon.operador{background:#e3f2fd;color:#2196f3}
+.search-result-item .sr-title{font-weight:bold;font-size:.9rem;color:#1a3d2e}
+.search-result-item .sr-sub{font-size:.75rem;color:#888}
+/* State indicators */
+.state-badges{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+.state-badge{display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:10px;font-size:.65rem;font-weight:bold;color:#fff}
+.state-badge.vp-badge{background:#88d8b0;color:#1a3d2e}
+.state-badge.ev-badge{background:#fd9853}
+.state-badge.foto-badge{background:#9b59b6}
 </style>
 </head>
 <body>
@@ -237,7 +262,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <button class="btn-login" id="btnLogin" onclick="iniciarSesion()">Entrar</button>
 </div>
 </div>
-<div class="header"><h1>🌿 RAPCA Campo</h1><span class="sync-status" id="syncStatus">...</span><div class="user-bar" id="userBar" style="display:none"><span class="user-name" id="userName">--</span><span id="userRole" style="font-size:.65rem;opacity:.7">--</span><button class="btn-logout" onclick="cerrarSesion()">Salir</button></div></div>
+<div class="header"><h1>🌿 RAPCA Campo</h1><span class="sync-status" id="syncStatus">...</span><div class="user-bar" id="userBar" style="display:none"><span class="user-name" id="userName">--</span><span id="userRole" style="font-size:.65rem;opacity:.7">--</span><button class="btn-logout" onclick="abrirBusqueda()" style="background:rgba(255,255,255,.15);margin-right:4px">🔍</button><button class="btn-logout" onclick="cerrarSesion()">Salir</button></div></div>
 <nav class="nav"><button class="nav-btn active" onclick="showPage('menu')">Menú</button><button class="nav-btn" onclick="showPage('vp')">VP</button><button class="nav-btn" onclick="showPage('ev')">EV</button><button class="nav-btn" onclick="showPage('mapa')">Mapa</button><button class="nav-btn" onclick="showPage('ganadero')">Gan.</button><button class="nav-btn" onclick="showPage('infra')">Infra</button><button class="nav-btn" onclick="showPage('panel')">Panel<span id="pendingBadge" class="pending-badge" style="display:none">0</span></button><button class="nav-btn" onclick="showPage('dashboard')">Dash</button><button class="nav-btn" onclick="showPage('timeline')">Hist.</button><button class="nav-btn" onclick="showPage('comparador')">Comp.</button></nav>
 
 <div id="page-menu" class="page active"><div style="max-width:400px;margin:20px auto"><button id="installBtn" class="menu-btn" style="display:none;background:#27ae60;color:#fff;border-left:5px solid #1e8449" onclick="instalarApp()">📲 Instalar App</button><button class="menu-btn vp" onclick="showPage('vp')">🔍 VP - Visitas Previas</button><button class="menu-btn ev" onclick="showPage('ev')">📊 EV - Evaluación</button><button class="menu-btn mapa" onclick="showPage('mapa')">🗺️ Mapa de Visitas</button><button class="menu-btn panel" onclick="showPage('panel')">📋 Panel de Registros</button><button class="menu-btn ganadero" onclick="showPage('ganadero')">🐄 Ganaderos</button><button class="menu-btn infra" onclick="showPage('infra')">🏗️ Infraestructuras</button><button class="menu-btn dash" onclick="showPage('dashboard')">📊 Dashboard</button><button class="menu-btn timeline" onclick="showPage('timeline')">📅 Historial</button><button class="menu-btn comparador" onclick="showPage('comparador')">🔄 Comparador Fotos</button><div class="card admin-only" id="adminPanel">
@@ -285,6 +310,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <h3 style="margin-bottom:10px;color:#1a3d2e">🗺️ Mapa de Visitas</h3>
 <div style="display:flex;gap:8px;flex-wrap:wrap">
 <label class="btn-camera" style="background:#3498db;color:#fff;margin:0;cursor:pointer;font-size:.85rem">📂 Cargar KML/KMZ<input type="file" id="kml-input" accept=".kml,.kmz" style="display:none" onchange="cargarArchivoMapa(this.files[0]);this.value=''"></label>
+<button class="btn-camera" style="background:#e67e22;margin:0;font-size:.85rem" onclick="exportarKML()">📤 Exportar KML</button>
 <button class="btn-camera" style="background:#e74c3c;margin:0;font-size:.85rem" onclick="limpiarCapasMapa()">🗑️ Limpiar</button>
 <button class="btn-camera" style="background:#27ae60;margin:0;font-size:.85rem" onclick="centrarEnMiPosicion()">📍 Mi posición</button>
 </div>
@@ -320,6 +346,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <div style="display:flex;gap:8px;flex-wrap:wrap">
 <label class="btn-camera" style="background:#8e44ad;color:#fff;margin:0;cursor:pointer;font-size:.85rem">📥 Importar Excel<input type="file" id="excel-input" accept=".xlsx,.xls,.csv" style="display:none" onchange="importarExcel(this.files[0]);this.value=''"></label>
 <button class="btn-camera" style="background:#27ae60;margin:0;font-size:.85rem" onclick="exportarExcel()">📤 Exportar Excel</button>
+<button class="btn-camera" style="background:#e67e22;margin:0;font-size:.85rem" onclick="descargarZIPTodas()">📦 ZIP Fotos</button>
 </div></div>
 <div class="card"><div class="card-title" onclick="toggleSection('inf-form-section')"><span>📝 Formulario</span><span style="font-size:.75rem;color:#666">▼</span></div><div class="section-content open" id="inf-form-section">
 <div class="form-row"><div class="form-group"><label>Provincia</label><input type="text" id="inf-provincia"></div><div class="form-group"><label>ID Zona</label><input type="text" id="inf-idzona" oninput="this.value=this.value.toUpperCase()"></div></div>
@@ -413,6 +440,18 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <img id="lbImg" src="">
 <div class="lb-info" id="lbInfo">--</div>
 <button class="lb-nav next" onclick="navLightbox(1)">▶</button>
+</div>
+<div class="search-overlay" id="searchOverlay" onclick="if(event.target===this)cerrarBusqueda()">
+<div class="search-box">
+<div class="search-input-wrap"><span style="font-size:1.2rem;color:#888">🔍</span><input type="text" id="searchInput" placeholder="Buscar infra, registros, operadores..." oninput="ejecutarBusqueda()"><span class="search-kbd">Ctrl+K</span></div>
+<div class="search-filters">
+<button class="active" onclick="setFiltroBusqueda('')">Todo</button>
+<button onclick="setFiltroBusqueda('infra')">Infra</button>
+<button onclick="setFiltroBusqueda('registro')">Registros</button>
+<button onclick="setFiltroBusqueda('operador')">Operadores</button>
+</div>
+<div class="search-results" id="searchResults"><p style="text-align:center;color:#888;padding:30px;font-size:.9rem">Escribe para buscar...</p></div>
+</div>
 </div>
 <div class="loading" id="loading"><div class="spinner"></div></div>
 <div class="toast" id="toast"></div>
