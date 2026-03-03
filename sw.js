@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rapca-v31';
+const CACHE_NAME = 'rapca-v32';
 const urlsToCache = [
   './',
   './index.html',
@@ -21,7 +21,7 @@ self.addEventListener('install', event => {
 
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then(keys => 
+    caches.keys().then(keys =>
       Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
     )
   );
