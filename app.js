@@ -10,7 +10,7 @@ var cameraStream=null,camaraTipo='',camaraSubtipo='',currentHeading=0;
 var contadorFotosVP={},contadorFotosEV={},contadorFotosEL={};
 var currentLat=null,currentLon=null,currentUTM=null;
 var deferredPrompt=null,mapTilesLoaded=[];
-var mapaLeaflet=null,controlCapas=null,capasKML={},capasKMLRaw={},marcadorPosicion=null,clusterGroup=null;
+var mapaLeaflet=null,controlCapas=null,capasKML={},capasKMLRaw={},capasKMLSubcapas={},capasKMLLabels={},marcadorPosicion=null,clusterGroup=null;
 var syncEnProgreso=false,syncStats={total:0,ok:0,fail:0},fallosSubida=[];
 var anotaciones=[],modoAnotacion=false;
 var editandoGanaderoId=null,editandoInfraId=null;
@@ -454,12 +454,15 @@ function guardarAsignacionCapa(){
 
 function procesarKML(kmlText,nombre){
   if(!mapaLeaflet)initMapa();
-  var layer=parsearKML(kmlText);
+  var resultado=parsearKML(kmlText);
+  var layer=resultado.group;
+  var subcapas=resultado.subcapas;
   var n=layer.getLayers().length;
   if(n===0){showToast('Sin elementos en '+nombre,'info');return;}
   layer.addTo(mapaLeaflet);
   capasKML[nombre]=layer;
   capasKMLRaw[nombre]=kmlText;
+  capasKMLSubcapas[nombre]=subcapas;
   if(controlCapas)controlCapas.addOverlay(layer,nombre);
   mapaLeaflet.fitBounds(layer.getBounds(),{padding:[30,30]});
   // Si admin y no tiene permisos asignados, abrir modal
@@ -468,7 +471,6 @@ function procesarKML(kmlText,nombre){
     if(!permisos[nombre]){
       permisos[nombre]={todos:false,operadores:[]};
       guardarPermisosCapas(permisos);
-      // Auto-abrir modal para asignar operadores
       setTimeout(function(){abrirModalCapasPerm(nombre);},400);
     }
   }
@@ -505,6 +507,7 @@ function parsearKML(kmlText){
     }
   }
   // Parsear placemarks
+  var subcapas=[];
   var pms=doc.querySelectorAll('Placemark');
   for(var i=0;i<pms.length;i++){
     var pm=pms[i];
@@ -521,6 +524,8 @@ function parsearKML(kmlText){
     var point=pm.querySelector('Point');
     var line=pm.querySelector('LineString');
     var polygon=pm.querySelector('Polygon');
+    var subLayer=null;
+    var tipoGeo='';
     if(point){
       var coordsEl=point.querySelector('coordinates');
       if(coordsEl){
@@ -529,7 +534,7 @@ function parsearKML(kmlText){
         if(estilo.iconColor){mkOpts.icon=L.divIcon({className:'',html:'<div style="background:'+estilo.iconColor+';width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',iconSize:[12,12],iconAnchor:[6,6]});}
         var mk=L.marker([c[0][1],c[0][0]],mkOpts);
         if(popup)mk.bindPopup(popup);
-        layers.addLayer(mk);
+        subLayer=mk;tipoGeo='punto';
       }
     }
     if(line){
@@ -540,7 +545,7 @@ function parsearKML(kmlText){
         var opts={color:estilo.lineColor||'#3388ff',weight:estilo.lineWidth||3};
         var pl=L.polyline(latlngs,opts);
         if(popup)pl.bindPopup(popup);
-        layers.addLayer(pl);
+        subLayer=pl;tipoGeo='linea';
       }
     }
     if(polygon){
@@ -552,11 +557,17 @@ function parsearKML(kmlText){
         var opts={color:estilo.lineColor||'#3388ff',fillColor:estilo.fillColor||'#3388ff',fillOpacity:0.3};
         var pg=L.polygon(latlngs,opts);
         if(popup)pg.bindPopup(popup);
-        layers.addLayer(pg);
+        subLayer=pg;tipoGeo='poligono';
       }
     }
+    if(subLayer){
+      subLayer._kmlIdx=i;
+      subLayer._kmlNombre=nombre;
+      layers.addLayer(subLayer);
+      subcapas.push({idx:i,nombre:nombre,desc:desc,tipo:tipoGeo,layer:subLayer,visible:true});
+    }
   }
-  return layers;
+  return {group:layers,subcapas:subcapas};
 }
 function parseKMLCoord(text){
   return text.trim().split(/\s+/).filter(function(s){return s.length>0;}).map(function(c){var p=c.split(',');return[parseFloat(p[0]),parseFloat(p[1]),parseFloat(p[2]||0)];});
@@ -571,43 +582,143 @@ function actualizarListaCapas(){
   var esAdmin=sesionActual&&sesionActual.rol==='admin';
   var permisos=getPermisosCapas();
   Object.keys(capasKML).forEach(function(nombre){
+    var subcapas=capasKMLSubcapas[nombre]||[];
     var n=capasKML[nombre].getLayers().length;
     var nombreEsc=nombre.replace(/'/g,"\\'");
-    html+='<div class="capas-item"><span>📄 '+nombre+' ('+n+')</span>';
+    var labelsActivas=capasKMLLabels[nombre]||false;
+    html+='<div class="capa-bloque">';
+    // Cabecera de la capa
+    html+='<div class="capas-item">';
+    html+='<span class="capa-toggle-expand" onclick="toggleExpandCapa(\''+nombreEsc+'\')">▶ 📄 '+nombre+' ('+n+')</span>';
     html+='<div class="capas-actions">';
+    html+='<button style="background:#3498db;font-size:.7rem;padding:3px 8px" onclick="zoomACapa(\''+nombreEsc+'\')">🔍</button>';
+    html+='<button style="background:'+(labelsActivas?'#27ae60':'#95a5a6')+';font-size:.7rem;padding:3px 8px" onclick="toggleEtiquetasCapa(\''+nombreEsc+'\')" title="Mostrar ID Unidad">🏷️</button>';
     if(esAdmin){
-      html+='<button class="btn-asignar" onclick="abrirModalCapasPerm(\''+nombreEsc+'\')">👥 Asignar</button>';
+      html+='<button class="btn-asignar" onclick="abrirModalCapasPerm(\''+nombreEsc+'\')">👥</button>';
       html+='<button onclick="eliminarCapaMapa(\''+nombreEsc+'\')">✖</button>';
     }
     html+='</div>';
-    // Mostrar badges de permisos (solo admin)
+    // Badges de permisos (solo admin)
     if(esAdmin){
       var p=permisos[nombre];
       if(p){
         html+='<div class="capas-permisos">';
-        if(p.todos){
-          html+='<span class="badge-perm badge-todos">Todos</span>';
-        }else if(p.operadores&&p.operadores.length>0){
-          var usuarios=getUsuariosLocal();
-          p.operadores.forEach(function(email){
-            var u=usuarios.find(function(x){return x.email===email;});
-            html+='<span class="badge-perm">'+(u?u.nombre:email)+'</span>';
-          });
-        }else{
-          html+='<span class="badge-perm" style="background:#fde8e8;color:#e74c3c">Sin asignar</span>';
-        }
+        if(p.todos){html+='<span class="badge-perm badge-todos">Todos</span>';}
+        else if(p.operadores&&p.operadores.length>0){var usuarios=getUsuariosLocal();p.operadores.forEach(function(email){var u=usuarios.find(function(x){return x.email===email;});html+='<span class="badge-perm">'+(u?u.nombre:email)+'</span>';});}
+        else{html+='<span class="badge-perm" style="background:#fde8e8;color:#e74c3c">Sin asignar</span>';}
         html+='</div>';
       }
     }
     html+='</div>';
+    // Subcapas (desplegable, oculto por defecto)
+    html+='<div class="subcapas-lista" id="subcapas-'+nombreEsc.replace(/[^a-zA-Z0-9]/g,'_')+'" style="display:none">';
+    if(subcapas.length>0){
+      var iconos={punto:'📍',linea:'〰️',poligono:'⬡'};
+      subcapas.forEach(function(sc,idx){
+        var scNombre=sc.nombre||('Elemento '+(idx+1));
+        html+='<div class="subcapa-item'+(sc.visible?'':' oculta')+'">';
+        html+='<span class="subcapa-icono">'+(iconos[sc.tipo]||'📄')+'</span>';
+        html+='<span class="subcapa-nombre" title="'+(sc.desc||scNombre)+'">'+scNombre+'</span>';
+        html+='<div class="subcapa-actions">';
+        html+='<button onclick="zoomASubcapa(\''+nombreEsc+'\','+idx+')" title="Zoom">🔍</button>';
+        html+='<button onclick="toggleSubcapa(\''+nombreEsc+'\','+idx+')" title="'+(sc.visible?'Ocultar':'Mostrar')+'">'+(sc.visible?'👁️':'👁️‍🗨️')+'</button>';
+        html+='</div></div>';
+      });
+    }
+    html+='</div>';
+    html+='</div>';
   });
   el.innerHTML=html;
+}
+function toggleExpandCapa(nombre){
+  var id='subcapas-'+nombre.replace(/[^a-zA-Z0-9]/g,'_');
+  var el=document.getElementById(id);
+  if(!el)return;
+  var visible=el.style.display!=='none';
+  el.style.display=visible?'none':'block';
+  // Rotar flecha
+  var items=document.querySelectorAll('.capa-toggle-expand');
+  for(var i=0;i<items.length;i++){
+    if(items[i].textContent.indexOf(nombre)!==-1){
+      items[i].textContent=items[i].textContent.replace(/^[▶▼]/,visible?'▶':'▼');
+      break;
+    }
+  }
+}
+function zoomACapa(nombre){
+  if(!mapaLeaflet||!capasKML[nombre])return;
+  mapaLeaflet.fitBounds(capasKML[nombre].getBounds(),{padding:[30,30]});
+}
+function zoomASubcapa(nombre,idx){
+  if(!mapaLeaflet)return;
+  var subcapas=capasKMLSubcapas[nombre];
+  if(!subcapas||!subcapas[idx])return;
+  var lyr=subcapas[idx].layer;
+  if(lyr.getBounds){mapaLeaflet.fitBounds(lyr.getBounds(),{padding:[30,30]});}
+  else if(lyr.getLatLng){mapaLeaflet.setView(lyr.getLatLng(),16);}
+  lyr.openPopup();
+}
+function toggleSubcapa(nombre,idx){
+  if(!mapaLeaflet)return;
+  var subcapas=capasKMLSubcapas[nombre];
+  if(!subcapas||!subcapas[idx])return;
+  var sc=subcapas[idx];
+  if(sc.visible){
+    capasKML[nombre].removeLayer(sc.layer);
+    sc.visible=false;
+  }else{
+    capasKML[nombre].addLayer(sc.layer);
+    sc.visible=true;
+  }
+  actualizarListaCapas();
+}
+function toggleEtiquetasCapa(nombre){
+  if(!mapaLeaflet)return;
+  if(capasKMLLabels[nombre]){
+    // Quitar etiquetas
+    capasKMLLabels[nombre].forEach(function(lbl){mapaLeaflet.removeLayer(lbl);});
+    delete capasKMLLabels[nombre];
+    actualizarListaCapas();
+    return;
+  }
+  // Crear etiquetas: buscar match con infraestructuras
+  var infras=getInfras();
+  var subcapas=capasKMLSubcapas[nombre]||[];
+  var labels=[];
+  subcapas.forEach(function(sc){
+    if(!sc.visible)return;
+    // Intentar encontrar infraestructura que coincida
+    var lyr=sc.layer;
+    var centro=null;
+    if(lyr.getLatLng)centro=lyr.getLatLng();
+    else if(lyr.getBounds)centro=lyr.getBounds().getCenter();
+    if(!centro)return;
+    // Buscar match por nombre del placemark con idUnidad
+    var matchInfra=null;
+    var nombreNorm=(sc.nombre||'').trim().toUpperCase();
+    for(var i=0;i<infras.length;i++){
+      var idU=(infras[i].idUnidad||'').trim().toUpperCase();
+      if(idU&&(nombreNorm===idU||nombreNorm.indexOf(idU)!==-1||idU.indexOf(nombreNorm)!==-1)){
+        matchInfra=infras[i];break;
+      }
+    }
+    var textoLabel=matchInfra?matchInfra.idUnidad:(sc.nombre||'');
+    if(!textoLabel)return;
+    var label=L.marker(centro,{icon:L.divIcon({className:'kml-label',html:'<span>'+textoLabel+'</span>',iconSize:[0,0],iconAnchor:[0,10]}),interactive:false,zIndexOffset:-100});
+    label.addTo(mapaLeaflet);
+    labels.push(label);
+  });
+  capasKMLLabels[nombre]=labels;
+  actualizarListaCapas();
+  if(labels.length===0)showToast('Sin elementos para etiquetar','info');
 }
 function eliminarCapaMapa(nombre){
   if(capasKML[nombre]){
     mapaLeaflet.removeLayer(capasKML[nombre]);
     if(controlCapas)controlCapas.removeLayer(capasKML[nombre]);
-    delete capasKML[nombre];delete capasKMLRaw[nombre];
+    delete capasKML[nombre];delete capasKMLRaw[nombre];delete capasKMLSubcapas[nombre];
+    // Limpiar etiquetas
+    if(capasKMLLabels[nombre]){capasKMLLabels[nombre].forEach(function(l){mapaLeaflet.removeLayer(l);});delete capasKMLLabels[nombre];}
     // Limpiar permisos
     var permisos=getPermisosCapas();
     delete permisos[nombre];
@@ -620,7 +731,9 @@ function limpiarCapasMapa(){
   if(Object.keys(capasKML).length===0){showToast('No hay capas','info');return;}
   if(!confirm('¿Eliminar todas las capas?'))return;
   Object.keys(capasKML).forEach(function(k){mapaLeaflet.removeLayer(capasKML[k]);if(controlCapas)controlCapas.removeLayer(capasKML[k]);});
-  capasKML={};capasKMLRaw={};
+  // Limpiar etiquetas
+  Object.keys(capasKMLLabels).forEach(function(k){capasKMLLabels[k].forEach(function(l){mapaLeaflet.removeLayer(l);});});
+  capasKML={};capasKMLRaw={};capasKMLSubcapas={};capasKMLLabels={};
   guardarPermisosCapas({});
   actualizarListaCapas();guardarCapasKMLLocal();
   if(fotosDB){try{var tx=fotosDB.transaction(['capas_kml'],'readwrite');tx.objectStore('capas_kml').clear();}catch(e){}}
@@ -981,8 +1094,8 @@ function cargarCapasKMLGuardadas(){
   if(saved){
     try{var data=JSON.parse(saved);Object.keys(data).forEach(function(nombre){
       if(!usuarioPuedeVerCapa(nombre))return;
-      var layer=parsearKML(data[nombre]);
-      if(layer.getLayers().length>0){layer.addTo(mapaLeaflet);capasKML[nombre]=layer;capasKMLRaw[nombre]=data[nombre];if(controlCapas)controlCapas.addOverlay(layer,nombre);}
+      var res=parsearKML(data[nombre]);
+      if(res.group.getLayers().length>0){res.group.addTo(mapaLeaflet);capasKML[nombre]=res.group;capasKMLRaw[nombre]=data[nombre];capasKMLSubcapas[nombre]=res.subcapas;if(controlCapas)controlCapas.addOverlay(res.group,nombre);}
     });actualizarListaCapas();}catch(e){console.error('Error cargando KML guardados:',e);}
   }
   // Luego cargar de IndexedDB (más capas que pueden no caber en localStorage)
@@ -2016,10 +2129,10 @@ function cargarCapasKMLdesdeDB(){
       var capas=req.result||[];
       capas.forEach(function(c){
         if(!capasKML[c.nombre]&&usuarioPuedeVerCapa(c.nombre)){
-          var layer=parsearKML(c.data);
-          if(layer.getLayers().length>0){
-            layer.addTo(mapaLeaflet);capasKML[c.nombre]=layer;capasKMLRaw[c.nombre]=c.data;
-            if(controlCapas)controlCapas.addOverlay(layer,c.nombre);
+          var res=parsearKML(c.data);
+          if(res.group.getLayers().length>0){
+            res.group.addTo(mapaLeaflet);capasKML[c.nombre]=res.group;capasKMLRaw[c.nombre]=c.data;capasKMLSubcapas[c.nombre]=res.subcapas;
+            if(controlCapas)controlCapas.addOverlay(res.group,c.nombre);
           }
         }
       });

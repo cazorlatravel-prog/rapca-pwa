@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rapca-v40';
+const CACHE_NAME = 'rapca-v41';
 const urlsToCache = [
   './',
   './index.html',
