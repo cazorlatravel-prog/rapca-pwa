@@ -565,11 +565,29 @@ function parsearKML(kmlText){
         subLayer=pg;tipoGeo='poligono';
       }
     }
+    // Extraer ExtendedData (SimpleData, Data)
+    var extData={};
+    var simpleDataEls=pm.querySelectorAll('SimpleData');
+    for(var j=0;j<simpleDataEls.length;j++){
+      var sd=simpleDataEls[j],sdName=sd.getAttribute('name');
+      if(sdName)extData[sdName]=sd.textContent.trim();
+    }
+    var dataEls=pm.querySelectorAll('ExtendedData > Data');
+    for(var j=0;j<dataEls.length;j++){
+      var d=dataEls[j],dName=d.getAttribute('name');
+      if(dName){var valEl=d.querySelector('value');extData[dName]=valEl?valEl.textContent.trim():'';}
+    }
+    // Extraer coordenadas centrales
+    var centroLat=null,centroLon=null;
+    if(subLayer){
+      if(subLayer.getLatLng){var ll=subLayer.getLatLng();centroLat=ll.lat;centroLon=ll.lng;}
+      else if(subLayer.getBounds){try{var ct=subLayer.getBounds().getCenter();centroLat=ct.lat;centroLon=ct.lng;}catch(e){}}
+    }
     if(subLayer){
       subLayer._kmlIdx=i;
       subLayer._kmlNombre=nombre;
       layers.addLayer(subLayer);
-      subcapas.push({idx:i,nombre:nombre,desc:desc,tipo:tipoGeo,layer:subLayer,visible:true});
+      subcapas.push({idx:i,nombre:nombre,desc:desc,tipo:tipoGeo,layer:subLayer,visible:true,extData:extData,lat:centroLat,lon:centroLon});
     }
   }
   return {group:layers,subcapas:subcapas};
@@ -602,6 +620,7 @@ function actualizarListaCapas(){
     html+='<span class="capa-toggle-expand" onclick="toggleExpandCapa(\''+nombreEsc+'\')">'+(expandida?'▼':'▶')+' '+nombre+' <span style="font-weight:normal;color:#666">('+visibles+'/'+totalSub+')</span></span>';
     html+='<div class="capas-actions">';
     html+='<button style="background:#3498db;font-size:.7rem;padding:3px 8px" onclick="zoomACapa(\''+nombreEsc+'\')" title="Zoom a toda la capa">🔍</button>';
+    html+='<button style="background:#e67e22;font-size:.7rem;padding:3px 8px" onclick="abrirTablaAtributos(\''+nombreEsc+'\')" title="Tabla de atributos">📊</button>';
     html+='<button style="background:'+(labelsActivas?'#27ae60':'#95a5a6')+';font-size:.7rem;padding:3px 8px" onclick="toggleEtiquetasCapa(\''+nombreEsc+'\')" title="Etiquetas ID Unidad">🏷️</button>';
     if(esAdmin){
       html+='<button class="btn-asignar" onclick="abrirModalCapasPerm(\''+nombreEsc+'\')" title="Asignar usuarios">👥</button>';
@@ -2562,4 +2581,242 @@ var _origInitMapa=initMapa;
 initMapa=function(){
   _origInitMapa();
   cargarWaypointsEnMapa();
+};
+
+// =========================================================================
+// === TABLA DE ATRIBUTOS (estilo QGIS) ===
+// =========================================================================
+var attrTableCapaActual='';
+var attrTableDatos=[];
+var attrTableColumnas=[];
+var attrTableOrden={col:'',asc:true};
+
+function abrirTablaAtributos(nombreCapa){
+  var subcapas=capasKMLSubcapas[nombreCapa];
+  if(!subcapas||subcapas.length===0){showToast('Sin elementos en esta capa','info');return;}
+  attrTableCapaActual=nombreCapa;
+  // Recopilar todas las columnas disponibles
+  var colSet={};
+  subcapas.forEach(function(sc){
+    if(sc.extData){Object.keys(sc.extData).forEach(function(k){colSet[k]=true;});}
+  });
+  var extraCols=Object.keys(colSet);
+  // Columnas fijas + extras de ExtendedData
+  attrTableColumnas=['Nombre','Tipo','Lat','Lon'];
+  if(extraCols.length>0)attrTableColumnas=attrTableColumnas.concat(extraCols);
+  else attrTableColumnas.push('Descripción');
+  // Preparar datos
+  attrTableDatos=subcapas.map(function(sc,idx){
+    var fila={_idx:idx,_visible:sc.visible};
+    fila['Nombre']=sc.nombre||'Elemento '+(idx+1);
+    fila['Tipo']=sc.tipo;
+    fila['Lat']=sc.lat!==null?sc.lat.toFixed(6):'';
+    fila['Lon']=sc.lon!==null?sc.lon.toFixed(6):'';
+    fila['Descripción']=sc.desc||'';
+    if(sc.extData){Object.keys(sc.extData).forEach(function(k){fila[k]=sc.extData[k];});}
+    return fila;
+  });
+  attrTableOrden={col:'',asc:true};
+  document.getElementById('attr-table-titulo').textContent='📊 '+nombreCapa+' ('+subcapas.length+')';
+  document.getElementById('attr-table-buscar').value='';
+  renderTablaAtributos();
+  document.getElementById('attr-table-overlay').classList.add('show');
+}
+
+function cerrarTablaAtributos(){
+  document.getElementById('attr-table-overlay').classList.remove('show');
+  attrTableCapaActual='';
+}
+
+function renderTablaAtributos(){
+  var thead=document.getElementById('attr-table-head');
+  var tbody=document.getElementById('attr-table-body');
+  var filtro=document.getElementById('attr-table-buscar').value.toLowerCase();
+  // Filtrar
+  var datos=attrTableDatos;
+  if(filtro){
+    datos=datos.filter(function(f){
+      for(var i=0;i<attrTableColumnas.length;i++){
+        var v=f[attrTableColumnas[i]];
+        if(v&&String(v).toLowerCase().indexOf(filtro)>=0)return true;
+      }
+      return false;
+    });
+  }
+  // Ordenar
+  if(attrTableOrden.col){
+    var col=attrTableOrden.col,asc=attrTableOrden.asc;
+    datos=datos.slice().sort(function(a,b){
+      var va=a[col]||'',vb=b[col]||'';
+      var na=parseFloat(va),nb=parseFloat(vb);
+      if(!isNaN(na)&&!isNaN(nb))return asc?na-nb:nb-na;
+      return asc?String(va).localeCompare(String(vb)):String(vb).localeCompare(String(va));
+    });
+  }
+  // Renderizar cabecera
+  var iconos={punto:'📍',linea:'〰️',poligono:'⬡'};
+  var h='<tr>';
+  attrTableColumnas.forEach(function(col){
+    var cls='';
+    if(attrTableOrden.col===col)cls=attrTableOrden.asc?' sorted-asc':' sorted-desc';
+    h+='<th class="'+cls+'" onclick="ordenarTablaAtributos(\''+col.replace(/'/g,"\\'")+'\')" title="Ordenar por '+col+'">'+col+'<span class="sort-arrow"></span></th>';
+  });
+  h+='</tr>';
+  thead.innerHTML=h;
+  // Renderizar filas
+  h='';
+  datos.forEach(function(fila){
+    h+='<tr onclick="seleccionarFilaAtributos('+fila._idx+')" data-idx="'+fila._idx+'">';
+    attrTableColumnas.forEach(function(col){
+      var v=fila[col]||'';
+      if(col==='Tipo')h+='<td class="attr-tipo-cell">'+(iconos[v]||v)+'</td>';
+      else if(col==='Lat'||col==='Lon')h+='<td class="attr-coord">'+v+'</td>';
+      else h+='<td title="'+String(v).replace(/"/g,'&quot;')+'">'+v+'</td>';
+    });
+    h+='</tr>';
+  });
+  tbody.innerHTML=h;
+  document.getElementById('attr-table-count').textContent=datos.length+' de '+attrTableDatos.length+' elementos';
+}
+
+function filtrarTablaAtributos(){renderTablaAtributos();}
+
+function ordenarTablaAtributos(col){
+  if(attrTableOrden.col===col)attrTableOrden.asc=!attrTableOrden.asc;
+  else{attrTableOrden.col=col;attrTableOrden.asc=true;}
+  renderTablaAtributos();
+}
+
+function seleccionarFilaAtributos(idx){
+  // Resaltar fila
+  var rows=document.querySelectorAll('#attr-table-body tr');
+  for(var i=0;i<rows.length;i++){rows[i].classList.remove('attr-selected');}
+  var row=document.querySelector('#attr-table-body tr[data-idx="'+idx+'"]');
+  if(row)row.classList.add('attr-selected');
+  // Zoom al elemento en el mapa
+  var subcapas=capasKMLSubcapas[attrTableCapaActual];
+  if(!subcapas||!subcapas[idx])return;
+  var sc=subcapas[idx];
+  if(!sc.layer)return;
+  if(sc.layer.getLatLng){
+    mapaLeaflet.setView(sc.layer.getLatLng(),16);
+    sc.layer.openPopup();
+  }else if(sc.layer.getBounds){
+    try{mapaLeaflet.fitBounds(sc.layer.getBounds(),{padding:[30,30]});sc.layer.openPopup();}catch(e){}
+  }
+}
+
+function exportarTablaCSV(){
+  if(attrTableDatos.length===0){showToast('Sin datos','info');return;}
+  var sep=';';
+  var csv=attrTableColumnas.join(sep)+'\n';
+  attrTableDatos.forEach(function(fila){
+    var row=attrTableColumnas.map(function(col){
+      var v=String(fila[col]||'').replace(/"/g,'""');
+      return '"'+v+'"';
+    });
+    csv+=row.join(sep)+'\n';
+  });
+  var blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url;a.download=attrTableCapaActual.replace(/[^a-zA-Z0-9_.-]/g,'_')+'_atributos.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+  showToast('CSV exportado','success');
+}
+
+// =========================================================================
+// === CAPAS WMS/WMTS ADICIONALES (estilo QGIS) ===
+// =========================================================================
+var WMS_CAPAS=[
+  {id:'catastro',nombre:'Catastro',desc:'Parcelas catastrales (Sede Electrónica Catastro)',
+   url:'https://ovc.catastro.meh.es/Cartografia/WMS/ServidorWMS.aspx',
+   layers:'Catastro',format:'image/png',transparent:true,maxZoom:20,attribution:'© Catastro'},
+  {id:'siose',nombre:'SIOSE Ocupación Suelo',desc:'Usos del suelo España (IGN)',
+   url:'https://servicios.idee.es/wms-inspire/ocupacion-suelo',
+   layers:'LC.LandCoverSurfaces',format:'image/png',transparent:true,maxZoom:19,attribution:'SIOSE © IGN'},
+  {id:'mtn25',nombre:'MTN 1:25.000',desc:'Mapa topográfico nacional (IGN)',
+   url:'https://www.ign.es/wms-inspire/mapa-raster',
+   layers:'mtn_rasterizado',format:'image/jpeg',transparent:false,maxZoom:20,attribution:'MTN25 © IGN'},
+  {id:'lidar',nombre:'LiDAR / MDT Relieve',desc:'Modelo digital del terreno sombreado (IGN)',
+   url:'https://www.ign.es/wms-inspire/mdt',
+   layers:'EL.GridCoverage',format:'image/png',transparent:true,maxZoom:20,attribution:'MDT © IGN'},
+  {id:'hidro',nombre:'Hidrografía',desc:'Red hidrográfica España (IGN)',
+   url:'https://servicios.idee.es/wms-inspire/hidrografia',
+   layers:'HY.PhysicalWaters.Waterbodies',format:'image/png',transparent:true,maxZoom:19,attribution:'Hidrografía © IGN'},
+  {id:'geologia',nombre:'Mapa Geológico',desc:'Geología IGME 1:1.000.000',
+   url:'https://mapas.igme.es/gis/services/Cartografia_Geologica/IGME_Geologico_1M/MapServer/WMSServer',
+   layers:'0,1,2',format:'image/png',transparent:true,maxZoom:18,attribution:'© IGME'},
+  {id:'rediam_veg',nombre:'REDIAM Vegetación',desc:'Mapa de vegetación Andalucía',
+   url:'https://www.ideandalucia.es/services/toporaster10/wms',
+   layers:'toporaster10',format:'image/png',transparent:false,maxZoom:20,attribution:'© REDIAM'},
+  {id:'pnoa_historico',nombre:'PNOA Histórico 2004-06',desc:'Ortofoto histórica España (IGN)',
+   url:'https://www.ign.es/wms/pnoa-historico',
+   layers:'PNOA2004',format:'image/jpeg',transparent:false,maxZoom:20,attribution:'PNOA Hist. © IGN'}
+];
+var wmsLayersActivos={};
+
+function toggleWMSPanel(){
+  var panel=document.getElementById('wms-panel');
+  panel.classList.toggle('show');
+  if(panel.classList.contains('show'))renderWMSList();
+}
+
+function renderWMSList(){
+  var el=document.getElementById('wms-layers-list');
+  if(!el)return;
+  var h='';
+  WMS_CAPAS.forEach(function(capa){
+    var activo=!!wmsLayersActivos[capa.id];
+    h+='<div class="wms-layer-item">';
+    h+='<input type="checkbox" id="wms-cb-'+capa.id+'"'+(activo?' checked':'')+' onchange="toggleWMSLayer(\''+capa.id+'\',this.checked)">';
+    h+='<div class="wms-info"><div class="wms-name">'+capa.nombre+'</div><div class="wms-desc">'+capa.desc+'</div></div>';
+    h+='</div>';
+  });
+  el.innerHTML=h;
+}
+
+function toggleWMSLayer(id,activar){
+  if(!mapaLeaflet)initMapa();
+  var capa=WMS_CAPAS.find(function(c){return c.id===id;});
+  if(!capa)return;
+  if(activar){
+    // Crear y añadir capa WMS
+    var layer=L.tileLayer.wms(capa.url,{
+      layers:capa.layers,format:capa.format,transparent:capa.transparent,
+      maxZoom:capa.maxZoom,attribution:capa.attribution,opacity:0.7
+    });
+    layer.addTo(mapaLeaflet);
+    if(controlCapas)controlCapas.addOverlay(layer,capa.nombre);
+    wmsLayersActivos[id]=layer;
+  }else{
+    // Quitar capa
+    if(wmsLayersActivos[id]){
+      mapaLeaflet.removeLayer(wmsLayersActivos[id]);
+      if(controlCapas)controlCapas.removeLayer(wmsLayersActivos[id]);
+      delete wmsLayersActivos[id];
+    }
+  }
+  // Guardar estado
+  var estado={};
+  Object.keys(wmsLayersActivos).forEach(function(k){estado[k]=true;});
+  localStorage.setItem('rapca_wms_activos',JSON.stringify(estado));
+}
+
+function cargarWMSGuardados(){
+  var saved=localStorage.getItem('rapca_wms_activos');
+  if(!saved)return;
+  try{
+    var estado=JSON.parse(saved);
+    Object.keys(estado).forEach(function(id){
+      if(estado[id])toggleWMSLayer(id,true);
+    });
+  }catch(e){}
+}
+
+// Monkey-patch initMapa para cargar WMS guardados
+var _origInitMapa2=initMapa;
+initMapa=function(){
+  _origInitMapa2();
+  cargarWMSGuardados();
 };

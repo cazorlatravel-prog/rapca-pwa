@@ -385,6 +385,40 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .wp-form textarea{height:60px;resize:vertical}
 .wp-form .wp-actions{display:flex;gap:8px;justify-content:flex-end}
 .wp-form .wp-actions button{border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:bold;font-size:.85rem}
+/* === Tabla de Atributos (QGIS-style) === */
+.attr-table-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:6500;align-items:flex-end;justify-content:center}
+.attr-table-overlay.show{display:flex}
+.attr-table-panel{background:#fff;width:100%;max-width:100%;height:65vh;border-radius:14px 14px 0 0;box-shadow:0 -4px 20px rgba(0,0,0,.3);display:flex;flex-direction:column;overflow:hidden}
+.attr-table-header{background:#1a3d2e;color:#fff;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
+.attr-table-header h3{margin:0;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.attr-table-header .attr-actions{display:flex;gap:6px;align-items:center;flex-shrink:0}
+.attr-table-header button{background:rgba(255,255,255,.2);border:none;color:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:.8rem;font-weight:bold}
+.attr-table-toolbar{display:flex;gap:6px;padding:8px 12px;border-bottom:1px solid #eee;flex-shrink:0;align-items:center;flex-wrap:wrap}
+.attr-table-toolbar input{flex:1;min-width:120px;padding:8px 10px;border:2px solid #ddd;border-radius:8px;font-size:.85rem}
+.attr-table-toolbar .attr-count{font-size:.75rem;color:#888;white-space:nowrap}
+.attr-table-wrap{flex:1;overflow:auto;-webkit-overflow-scrolling:touch}
+.attr-table{width:100%;border-collapse:collapse;font-size:.78rem;min-width:600px}
+.attr-table thead{position:sticky;top:0;z-index:1}
+.attr-table th{background:#2d5a3d;color:#fff;padding:8px 10px;text-align:left;font-size:.72rem;font-weight:600;white-space:nowrap;cursor:pointer;user-select:none}
+.attr-table th:hover{background:#3d7a5d}
+.attr-table th .sort-arrow{margin-left:4px;font-size:.6rem;opacity:.7}
+.attr-table th.sorted-asc .sort-arrow::after{content:'▲'}
+.attr-table th.sorted-desc .sort-arrow::after{content:'▼'}
+.attr-table td{padding:6px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.attr-table tr:nth-child(even){background:#f9f9f9}
+.attr-table tr:hover{background:#e8f5e9;cursor:pointer}
+.attr-table tr.attr-selected{background:#d4edda!important}
+.attr-table .attr-tipo-cell{text-align:center}
+.attr-table .attr-coord{font-family:'Courier New',monospace;font-size:.7rem;color:#666}
+/* WMS panel */
+.wms-panel{display:none;margin-top:8px;padding:10px;background:#f5f0f8;border:2px solid #8e44ad;border-radius:10px}
+.wms-panel.show{display:block}
+.wms-layer-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;margin-bottom:4px;background:#fff;font-size:.8rem;border-left:3px solid #8e44ad}
+.wms-layer-item:hover{background:#f8f4ff}
+.wms-layer-item input[type="checkbox"]{width:18px;height:18px;accent-color:#8e44ad;cursor:pointer;flex-shrink:0}
+.wms-layer-item .wms-info{flex:1;min-width:0}
+.wms-layer-item .wms-name{font-weight:bold;color:#1a3d2e;font-size:.8rem}
+.wms-layer-item .wms-desc{font-size:.68rem;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Fullscreen GPS tools */
 .mapa-fullscreen .gps-float-panel{display:flex!important}
 .gps-float-panel{display:none;position:fixed;bottom:20px;left:10px;right:10px;z-index:5100;background:rgba(26,61,46,.92);color:#fff;border-radius:12px;padding:10px 14px;font-family:'Courier New',monospace;justify-content:space-around;box-shadow:0 4px 16px rgba(0,0,0,.3)}
@@ -489,6 +523,13 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <button class="btn-camera" style="background:#27ae60;margin:0;font-size:.85rem" onclick="centrarEnMiPosicion()">📍 Mi posición</button>
 <button class="btn-camera" style="background:#1a3d2e;margin:0;font-size:.85rem" onclick="toggleMapaFullscreen()">⛶ Pantalla completa</button>
 <button class="btn-camera" style="background:#9b59b6;margin:0;font-size:.85rem" onclick="abrirExportarMapaPDF()">📄 PDF Unidad</button>
+<button class="btn-camera" style="background:#8e44ad;margin:0;font-size:.85rem" onclick="toggleWMSPanel()">🗺️ Capas WMS</button>
+</div>
+<!-- Panel WMS/WMTS -->
+<div class="wms-panel" id="wms-panel">
+<div style="font-weight:bold;color:#8e44ad;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+<span>🗺️ Capas WMS/WMTS</span><button onclick="document.getElementById('wms-panel').classList.remove('show')" style="background:none;border:none;cursor:pointer;font-size:1.1rem;color:#8e44ad">✕</button></div>
+<div id="wms-layers-list"></div>
 </div>
 <!-- GPS Tools Bar -->
 <div class="gps-tools-bar">
@@ -574,6 +615,28 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <div class="wp-actions">
 <button style="background:#eee;color:#333" onclick="cerrarFormWaypoint()">Cancelar</button>
 <button style="background:#8e44ad;color:#fff" onclick="guardarWaypoint()">Guardar</button>
+</div>
+</div>
+</div>
+<!-- Tabla de atributos (QGIS-style) -->
+<div class="attr-table-overlay" id="attr-table-overlay" onclick="if(event.target===this)cerrarTablaAtributos()">
+<div class="attr-table-panel">
+<div class="attr-table-header">
+<h3 id="attr-table-titulo">Tabla de atributos</h3>
+<div class="attr-actions">
+<button onclick="exportarTablaCSV()">📤 CSV</button>
+<button onclick="cerrarTablaAtributos()">✕</button>
+</div>
+</div>
+<div class="attr-table-toolbar">
+<input type="text" id="attr-table-buscar" placeholder="Filtrar atributos..." oninput="filtrarTablaAtributos()">
+<span class="attr-count" id="attr-table-count">0 elementos</span>
+</div>
+<div class="attr-table-wrap">
+<table class="attr-table" id="attr-table">
+<thead id="attr-table-head"></thead>
+<tbody id="attr-table-body"></tbody>
+</table>
 </div>
 </div>
 </div>
