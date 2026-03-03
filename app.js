@@ -576,6 +576,7 @@ function kmlColorToHex(kc){
   kc=kc.trim();if(kc.length!==8)return'#3388ff';
   return'#'+kc.substr(6,2)+kc.substr(4,2)+kc.substr(2,2);
 }
+var capasExpandidas={};
 function actualizarListaCapas(){
   var el=document.getElementById('capas-lista');if(!el)return;
   var html='';
@@ -583,22 +584,25 @@ function actualizarListaCapas(){
   var permisos=getPermisosCapas();
   Object.keys(capasKML).forEach(function(nombre){
     var subcapas=capasKMLSubcapas[nombre]||[];
-    var n=capasKML[nombre].getLayers().length;
+    var totalSub=subcapas.length;
+    var visibles=subcapas.filter(function(s){return s.visible;}).length;
     var nombreEsc=nombre.replace(/'/g,"\\'");
+    var capaId=nombre.replace(/[^a-zA-Z0-9]/g,'_');
     var labelsActivas=capasKMLLabels[nombre]||false;
+    var expandida=capasExpandidas[nombre]||false;
+
     html+='<div class="capa-bloque">';
-    // Cabecera de la capa
+    // Cabecera
     html+='<div class="capas-item">';
-    html+='<span class="capa-toggle-expand" onclick="toggleExpandCapa(\''+nombreEsc+'\')">▶ 📄 '+nombre+' ('+n+')</span>';
+    html+='<span class="capa-toggle-expand" onclick="toggleExpandCapa(\''+nombreEsc+'\')">'+(expandida?'▼':'▶')+' '+nombre+' <span style="font-weight:normal;color:#666">('+visibles+'/'+totalSub+')</span></span>';
     html+='<div class="capas-actions">';
-    html+='<button style="background:#3498db;font-size:.7rem;padding:3px 8px" onclick="zoomACapa(\''+nombreEsc+'\')">🔍</button>';
-    html+='<button style="background:'+(labelsActivas?'#27ae60':'#95a5a6')+';font-size:.7rem;padding:3px 8px" onclick="toggleEtiquetasCapa(\''+nombreEsc+'\')" title="Mostrar ID Unidad">🏷️</button>';
+    html+='<button style="background:#3498db;font-size:.7rem;padding:3px 8px" onclick="zoomACapa(\''+nombreEsc+'\')" title="Zoom a toda la capa">🔍</button>';
+    html+='<button style="background:'+(labelsActivas?'#27ae60':'#95a5a6')+';font-size:.7rem;padding:3px 8px" onclick="toggleEtiquetasCapa(\''+nombreEsc+'\')" title="Etiquetas ID Unidad">🏷️</button>';
     if(esAdmin){
-      html+='<button class="btn-asignar" onclick="abrirModalCapasPerm(\''+nombreEsc+'\')">👥</button>';
-      html+='<button onclick="eliminarCapaMapa(\''+nombreEsc+'\')">✖</button>';
+      html+='<button class="btn-asignar" onclick="abrirModalCapasPerm(\''+nombreEsc+'\')" title="Asignar usuarios">👥</button>';
+      html+='<button onclick="eliminarCapaMapa(\''+nombreEsc+'\')" title="Eliminar capa">✖</button>';
     }
     html+='</div>';
-    // Badges de permisos (solo admin)
     if(esAdmin){
       var p=permisos[nombre];
       if(p){
@@ -610,20 +614,32 @@ function actualizarListaCapas(){
       }
     }
     html+='</div>';
-    // Subcapas (desplegable, oculto por defecto)
-    html+='<div class="subcapas-lista" id="subcapas-'+nombreEsc.replace(/[^a-zA-Z0-9]/g,'_')+'" style="display:none">';
-    if(subcapas.length>0){
+
+    // Tabla de subcapas
+    html+='<div id="capa-tabla-'+capaId+'" style="display:'+(expandida?'block':'none')+'">';
+    if(totalSub>0){
+      // Buscador
+      html+='<input type="text" class="capa-tabla-buscar" placeholder="Buscar en '+totalSub+' elementos..." oninput="filtrarTablaCapas(\''+nombreEsc+'\',this.value)">';
+      // Tabla
+      html+='<div class="capa-tabla-wrap"><table class="capa-tabla"><thead><tr>';
+      html+='<th class="col-check"><input type="checkbox" title="Seleccionar todos" onchange="toggleTodasSubcapas(\''+nombreEsc+'\',this.checked)"'+(visibles===totalSub?' checked':'')+'></th>';
+      html+='<th>Nombre</th><th class="col-tipo">Tipo</th><th class="col-acciones">Zoom</th>';
+      html+='</tr></thead><tbody id="capa-tbody-'+capaId+'">';
       var iconos={punto:'📍',linea:'〰️',poligono:'⬡'};
       subcapas.forEach(function(sc,idx){
         var scNombre=sc.nombre||('Elemento '+(idx+1));
-        html+='<div class="subcapa-item'+(sc.visible?'':' oculta')+'">';
-        html+='<span class="subcapa-icono">'+(iconos[sc.tipo]||'📄')+'</span>';
-        html+='<span class="subcapa-nombre" title="'+(sc.desc||scNombre)+'">'+scNombre+'</span>';
-        html+='<div class="subcapa-actions">';
-        html+='<button onclick="zoomASubcapa(\''+nombreEsc+'\','+idx+')" title="Zoom">🔍</button>';
-        html+='<button onclick="toggleSubcapa(\''+nombreEsc+'\','+idx+')" title="'+(sc.visible?'Ocultar':'Mostrar')+'">'+(sc.visible?'👁️':'👁️‍🗨️')+'</button>';
-        html+='</div></div>';
+        html+='<tr class="'+(sc.visible?'':'fila-oculta')+'" data-nombre="'+scNombre.toLowerCase()+'">';
+        html+='<td class="col-check"><input type="checkbox"'+(sc.visible?' checked':'')+' onchange="toggleSubcapa(\''+nombreEsc+'\','+idx+',this.checked)"></td>';
+        html+='<td class="col-nombre" title="'+(sc.desc||scNombre)+'">'+scNombre+'</td>';
+        html+='<td class="col-tipo">'+(iconos[sc.tipo]||'')+'</td>';
+        html+='<td class="col-acciones"><button class="btn-zoom" onclick="zoomASubcapa(\''+nombreEsc+'\','+idx+')">🔍 Ir</button></td>';
+        html+='</tr>';
       });
+      html+='</tbody></table></div>';
+      // Footer
+      html+='<div class="capa-tabla-footer"><span>'+visibles+' de '+totalSub+' visibles</span><span><button style="background:#3498db;color:#fff;border:none;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:.7rem" onclick="toggleTodasSubcapas(\''+nombreEsc+'\',true);actualizarListaCapas()">Mostrar todas</button> <button style="background:#95a5a6;color:#fff;border:none;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:.7rem" onclick="toggleTodasSubcapas(\''+nombreEsc+'\',false);actualizarListaCapas()">Ocultar todas</button></span></div>';
+    }else{
+      html+='<div style="padding:10px;text-align:center;color:#999;font-size:.8rem">Sin elementos</div>';
     }
     html+='</div>';
     html+='</div>';
@@ -631,69 +647,79 @@ function actualizarListaCapas(){
   el.innerHTML=html;
 }
 function toggleExpandCapa(nombre){
-  var id='subcapas-'+nombre.replace(/[^a-zA-Z0-9]/g,'_');
-  var el=document.getElementById(id);
-  if(!el)return;
-  var visible=el.style.display!=='none';
-  el.style.display=visible?'none':'block';
-  // Rotar flecha
-  var items=document.querySelectorAll('.capa-toggle-expand');
-  for(var i=0;i<items.length;i++){
-    if(items[i].textContent.indexOf(nombre)!==-1){
-      items[i].textContent=items[i].textContent.replace(/^[▶▼]/,visible?'▶':'▼');
-      break;
-    }
+  capasExpandidas[nombre]=!capasExpandidas[nombre];
+  actualizarListaCapas();
+}
+function filtrarTablaCapas(nombre,query){
+  var capaId=nombre.replace(/[^a-zA-Z0-9]/g,'_');
+  var tbody=document.getElementById('capa-tbody-'+capaId);
+  if(!tbody)return;
+  var q=query.toLowerCase().trim();
+  var filas=tbody.querySelectorAll('tr');
+  for(var i=0;i<filas.length;i++){
+    var nombreData=filas[i].getAttribute('data-nombre')||'';
+    filas[i].style.display=(!q||nombreData.indexOf(q)!==-1)?'':'none';
   }
 }
 function zoomACapa(nombre){
   if(!mapaLeaflet||!capasKML[nombre])return;
-  mapaLeaflet.fitBounds(capasKML[nombre].getBounds(),{padding:[30,30]});
+  try{mapaLeaflet.fitBounds(capasKML[nombre].getBounds(),{padding:[30,30]});}catch(e){}
 }
 function zoomASubcapa(nombre,idx){
   if(!mapaLeaflet)return;
   var subcapas=capasKMLSubcapas[nombre];
   if(!subcapas||!subcapas[idx])return;
-  var lyr=subcapas[idx].layer;
-  if(lyr.getBounds){mapaLeaflet.fitBounds(lyr.getBounds(),{padding:[30,30]});}
+  var sc=subcapas[idx];
+  // Si está oculta, hacerla visible primero
+  if(!sc.visible){
+    capasKML[nombre].addLayer(sc.layer);
+    sc.visible=true;
+    actualizarListaCapas();
+  }
+  var lyr=sc.layer;
+  if(lyr.getBounds){try{mapaLeaflet.fitBounds(lyr.getBounds(),{padding:[40,40]});}catch(e){}}
   else if(lyr.getLatLng){mapaLeaflet.setView(lyr.getLatLng(),16);}
-  lyr.openPopup();
+  setTimeout(function(){try{lyr.openPopup();}catch(e){}},300);
 }
-function toggleSubcapa(nombre,idx){
+function toggleSubcapa(nombre,idx,checked){
   if(!mapaLeaflet)return;
   var subcapas=capasKMLSubcapas[nombre];
   if(!subcapas||!subcapas[idx])return;
   var sc=subcapas[idx];
-  if(sc.visible){
-    capasKML[nombre].removeLayer(sc.layer);
-    sc.visible=false;
-  }else{
-    capasKML[nombre].addLayer(sc.layer);
-    sc.visible=true;
+  if(checked&&!sc.visible){
+    capasKML[nombre].addLayer(sc.layer);sc.visible=true;
+  }else if(!checked&&sc.visible){
+    capasKML[nombre].removeLayer(sc.layer);sc.visible=false;
   }
   actualizarListaCapas();
+}
+function toggleTodasSubcapas(nombre,mostrar){
+  if(!mapaLeaflet)return;
+  var subcapas=capasKMLSubcapas[nombre];
+  if(!subcapas)return;
+  subcapas.forEach(function(sc){
+    if(mostrar&&!sc.visible){capasKML[nombre].addLayer(sc.layer);sc.visible=true;}
+    else if(!mostrar&&sc.visible){capasKML[nombre].removeLayer(sc.layer);sc.visible=false;}
+  });
 }
 function toggleEtiquetasCapa(nombre){
   if(!mapaLeaflet)return;
   if(capasKMLLabels[nombre]){
-    // Quitar etiquetas
     capasKMLLabels[nombre].forEach(function(lbl){mapaLeaflet.removeLayer(lbl);});
     delete capasKMLLabels[nombre];
     actualizarListaCapas();
     return;
   }
-  // Crear etiquetas: buscar match con infraestructuras
   var infras=getInfras();
   var subcapas=capasKMLSubcapas[nombre]||[];
   var labels=[];
   subcapas.forEach(function(sc){
     if(!sc.visible)return;
-    // Intentar encontrar infraestructura que coincida
     var lyr=sc.layer;
     var centro=null;
     if(lyr.getLatLng)centro=lyr.getLatLng();
-    else if(lyr.getBounds)centro=lyr.getBounds().getCenter();
+    else if(lyr.getBounds)try{centro=lyr.getBounds().getCenter();}catch(e){}
     if(!centro)return;
-    // Buscar match por nombre del placemark con idUnidad
     var matchInfra=null;
     var nombreNorm=(sc.nombre||'').trim().toUpperCase();
     for(var i=0;i<infras.length;i++){

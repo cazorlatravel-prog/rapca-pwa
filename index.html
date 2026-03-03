@@ -124,24 +124,32 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .camera-modal .camera-info{color:#fff;font-size:.9rem;text-align:center;max-width:120px}
 .nav-btn{font-size:.6rem;padding:8px 4px 6px;min-width:44px}
 #mapa{background:#e0e0e0}
-.capas-item{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#f9f9f9;border-radius:6px;margin-bottom:5px;font-size:.85rem;flex-wrap:wrap;gap:4px}
+.capas-item{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#f9f9f9;border-radius:6px 6px 0 0;font-size:.85rem;flex-wrap:wrap;gap:4px}
 .capas-item button{background:#e74c3c;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:.75rem}
 .capas-item .capas-actions{display:flex;gap:4px;align-items:center}
 .capas-item .capas-actions .btn-asignar{background:#8e44ad;font-size:.7rem;padding:3px 8px}
 .capas-permisos{font-size:.7rem;color:#666;width:100%;margin-top:2px}
 .capas-permisos .badge-perm{display:inline-block;background:#e8e0f0;color:#8e44ad;padding:1px 6px;border-radius:10px;margin-right:3px;font-size:.65rem}
 .capas-permisos .badge-todos{background:#d4edda;color:#27ae60}
-.capa-bloque{margin-bottom:6px}
-.capa-toggle-expand{cursor:pointer;user-select:none;flex:1}
-.subcapas-lista{background:#f0f0f0;border-radius:0 0 6px 6px;padding:4px 6px;max-height:200px;overflow-y:auto}
-.subcapa-item{display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:.78rem;border-bottom:1px solid #e0e0e0;transition:opacity .2s}
-.subcapa-item:last-child{border-bottom:none}
-.subcapa-item.oculta{opacity:.45}
-.subcapa-icono{font-size:.85rem;flex-shrink:0}
-.subcapa-nombre{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#333}
-.subcapa-actions{display:flex;gap:3px;flex-shrink:0}
-.subcapa-actions button{background:#3498db;color:#fff;border:none;padding:2px 6px;border-radius:3px;cursor:pointer;font-size:.65rem}
-.subcapa-actions button:last-child{background:#7f8c8d}
+.capa-bloque{margin-bottom:8px;border:1px solid #ddd;border-radius:6px;overflow:hidden}
+.capa-toggle-expand{cursor:pointer;user-select:none;flex:1;font-weight:bold;color:#1a3d2e}
+.capa-tabla-wrap{max-height:280px;overflow-y:auto;background:#fff}
+.capa-tabla{width:100%;border-collapse:collapse;font-size:.78rem}
+.capa-tabla thead{position:sticky;top:0;z-index:1}
+.capa-tabla th{background:#1a3d2e;color:#fff;padding:6px 8px;text-align:left;font-size:.72rem;font-weight:600;white-space:nowrap}
+.capa-tabla td{padding:5px 8px;border-bottom:1px solid #eee;vertical-align:middle}
+.capa-tabla tr:nth-child(even){background:#f9f9f9}
+.capa-tabla tr:hover{background:#e8f5e9}
+.capa-tabla tr.fila-oculta{opacity:.4}
+.capa-tabla .col-check{width:30px;text-align:center}
+.capa-tabla .col-nombre{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.capa-tabla .col-tipo{width:50px;text-align:center}
+.capa-tabla .col-acciones{width:60px;text-align:center}
+.capa-tabla input[type="checkbox"]{width:16px;height:16px;accent-color:#1a3d2e;cursor:pointer}
+.capa-tabla .btn-zoom{background:#3498db;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:.7rem}
+.capa-tabla .btn-zoom:active{background:#2980b9}
+.capa-tabla-buscar{width:100%;padding:6px 10px;border:none;border-bottom:2px solid #1a3d2e;font-size:.8rem;outline:none;box-sizing:border-box}
+.capa-tabla-footer{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:#f5f5f0;font-size:.72rem;color:#666;border-top:1px solid #ddd}
 .kml-label{background:none!important;border:none!important;box-shadow:none!important}
 .kml-label span{background:rgba(26,61,46,0.85);color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:bold;white-space:nowrap;border:1px solid rgba(255,255,255,.5);box-shadow:0 1px 3px rgba(0,0,0,.3)}
 .modal-capas-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:6000;align-items:center;justify-content:center}
