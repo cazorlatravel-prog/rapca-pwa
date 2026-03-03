@@ -34,6 +34,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
+// --- Diagnóstico: GET upload.php?test=1 para verificar configuración ---
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['test'])) {
+    $cloudOk = defined('CLOUDINARY_CLOUD_NAME') && CLOUDINARY_CLOUD_NAME !== '';
+    $apiOk   = defined('CLOUDINARY_API_KEY') && CLOUDINARY_API_KEY !== '';
+    $secOk   = defined('CLOUDINARY_API_SECRET') && CLOUDINARY_API_SECRET !== '';
+    $curlOk  = function_exists('curl_init');
+
+    // Test de conexión a Cloudinary
+    $cloudTest = 'no probado';
+    if ($cloudOk && $apiOk && $curlOk) {
+        $testUrl = 'https://api.cloudinary.com/v1_1/' . CLOUDINARY_CLOUD_NAME . '/resources/image?max_results=1';
+        $ch = curl_init($testUrl);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_USERPWD => CLOUDINARY_API_KEY . ':' . CLOUDINARY_API_SECRET
+        ]);
+        $res = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err = curl_error($ch);
+        curl_close($ch);
+        if ($err) $cloudTest = 'Error conexión: ' . $err;
+        else if ($code === 200) $cloudTest = 'OK - conexión exitosa';
+        else if ($code === 401) $cloudTest = 'ERROR 401 - Credenciales inválidas (API key o secret incorrectos)';
+        else $cloudTest = 'HTTP ' . $code . ': ' . substr($res, 0, 200);
+    }
+
+    // Test DB
+    $dbTest = 'no probado';
+    try {
+        $pdo = new PDO('mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4', DB_USER, DB_PASS, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        $dbTest = 'OK - conectado a ' . DB_NAME;
+    } catch (PDOException $e) {
+        $dbTest = 'ERROR: ' . $e->getMessage();
+    }
+
+    echo json_encode([
+        'diagnostico' => true,
+        'cloudinary_cloud' => $cloudOk ? CLOUDINARY_CLOUD_NAME : 'NO DEFINIDO',
+        'cloudinary_key'   => $apiOk ? substr(CLOUDINARY_API_KEY, 0, 6) . '...' : 'NO DEFINIDO',
+        'cloudinary_secret'=> $secOk ? '***configurado***' : 'NO DEFINIDO',
+        'cloudinary_test'  => $cloudTest,
+        'curl_disponible'  => $curlOk,
+        'db_test'          => $dbTest,
+        'php_limits' => [
+            'post_max_size'      => ini_get('post_max_size'),
+            'upload_max_filesize' => ini_get('upload_max_filesize'),
+            'memory_limit'       => ini_get('memory_limit'),
+            'max_execution_time' => ini_get('max_execution_time')
+        ],
+        'env_cargado' => getenv('DB_HOST') ? true : false
+    ], JSON_PRETTY_PRINT);
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['error' => 'Método no permitido']);
