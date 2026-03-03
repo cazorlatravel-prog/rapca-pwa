@@ -10,6 +10,8 @@
 <meta name="theme-color" content="#1a3d2e">
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect fill='%231a3d2e' width='180' height='180' rx='40'/%3E%3Ctext x='90' y='125' text-anchor='middle' font-size='100'%3E🌿%3C/text%3E%3C/svg%3E">
 <title>RAPCA Campo</title>
 <style>
@@ -20,8 +22,8 @@ body{font-family:-apple-system,sans-serif;background:#f5f5f0;color:#1a3d2e;min-h
 .sync-status{font-size:.75rem;padding:4px 10px;border-radius:12px}
 .sync-status.online{background:#27ae60}
 .sync-status.offline{background:#e74c3c}
-.nav{display:flex;background:#fff;border-bottom:1px solid #ddd}
-.nav-btn{flex:1;padding:12px;border:none;background:#fff;font-size:.9rem;cursor:pointer;border-bottom:3px solid transparent}
+.nav{display:flex;background:#fff;border-bottom:1px solid #ddd;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.nav-btn{flex:0 0 auto;padding:12px 6px;border:none;background:#fff;font-size:.9rem;cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
 .nav-btn.active{border-bottom-color:#5b8c5a;color:#5b8c5a;font-weight:bold}
 .page{display:none;padding:15px;padding-bottom:100px}
 .page.active{display:block}
@@ -173,6 +175,55 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .user-card .uc-info .uc-role.admin{background:#e67e22}
 .user-card .uc-actions{display:flex;gap:4px;flex-shrink:0}
 .user-card .uc-actions button{padding:6px 10px;border:none;border-radius:6px;cursor:pointer;font-size:.75rem;color:#fff}
+.dash-metrics{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:15px}
+.metric-card{background:#fff;border-radius:10px;padding:14px;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.1);border-top:4px solid #5b8c5a}
+.metric-card.orange{border-top-color:#fd9853}
+.metric-card.blue{border-top-color:#3498db}
+.metric-card.red{border-top-color:#e74c3c}
+.metric-card.purple{border-top-color:#9b59b6}
+.metric-card.green{border-top-color:#27ae60}
+.metric-card .mv{font-size:1.8rem;font-weight:bold;color:#1a3d2e}
+.metric-card .ml{font-size:.7rem;color:#666;text-transform:uppercase;margin-top:2px}
+.dash-filters{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.dash-filters select{padding:8px;border:2px solid #ddd;border-radius:8px;font-size:.85rem;flex:1;min-width:0}
+.chart-box{background:#fff;border-radius:10px;padding:15px;box-shadow:0 2px 6px rgba(0,0,0,.1);margin-bottom:12px}
+.chart-box canvas{width:100%!important;max-height:250px}
+.tl-filters{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.tl-filters select,.tl-filters input{padding:8px;border:2px solid #ddd;border-radius:8px;font-size:.85rem;flex:1;min-width:100px}
+.tl-item{background:#fff;border-radius:10px;padding:14px;margin-bottom:10px;box-shadow:0 2px 4px rgba(0,0,0,.1);border-left:4px solid #5b8c5a}
+.tl-item.ev{border-left-color:#fd9853}
+.tl-item .tl-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.tl-item .tl-date{font-size:.75rem;color:#888}
+.tl-item .tl-body{font-size:.85rem;color:#555}
+.tl-photos{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.tl-photos .tl-thumb{width:60px;height:80px;border-radius:6px;overflow:hidden;cursor:pointer;background:#eee;flex-shrink:0}
+.tl-photos .tl-thumb img{width:100%;height:100%;object-fit:cover}
+.lightbox{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.92);z-index:4000;display:none;align-items:center;justify-content:center;flex-direction:column}
+.lightbox.show{display:flex}
+.lightbox img{max-width:95%;max-height:80vh;border-radius:8px}
+.lightbox .lb-info{color:#fff;text-align:center;margin-top:10px;font-size:.85rem}
+.lightbox .lb-close{position:absolute;top:15px;right:15px;background:rgba(255,255,255,.2);color:#fff;border:none;font-size:1.5rem;width:44px;height:44px;border-radius:50%;cursor:pointer}
+.lightbox .lb-nav{position:absolute;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.2);color:#fff;border:none;font-size:1.5rem;width:44px;height:44px;border-radius:50%;cursor:pointer}
+.lightbox .lb-nav.prev{left:10px}
+.lightbox .lb-nav.next{right:10px}
+.comp-selector{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.comp-selector select{flex:1;padding:10px;border:2px solid #ddd;border-radius:8px;font-size:.9rem;min-width:100px}
+.comp-mode{display:flex;gap:8px;margin-bottom:12px}
+.comp-mode button{flex:1;padding:10px;border:2px solid #ddd;background:#fff;border-radius:8px;cursor:pointer;font-size:.85rem;font-weight:bold}
+.comp-mode button.active{background:#5b8c5a;color:#fff;border-color:#5b8c5a}
+.comp-area{position:relative;background:#000;border-radius:10px;overflow:hidden;min-height:300px;touch-action:none}
+.comp-area img{width:100%;display:block}
+.comp-slider-line{position:absolute;top:0;bottom:0;width:3px;background:#FFD700;z-index:10;cursor:ew-resize}
+.comp-slider-handle{position:absolute;top:50%;left:-18px;width:40px;height:40px;background:#FFD700;border-radius:50%;transform:translateY(-50%);display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:1rem;color:#1a3d2e;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+.comp-side{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.comp-side .comp-img-box{text-align:center;background:#f0f0f0;border-radius:8px;overflow:hidden}
+.comp-side .comp-img-box img{width:100%;aspect-ratio:3/4;object-fit:cover}
+.comp-side .comp-img-box .comp-label{padding:6px;font-size:.75rem;font-weight:bold;color:#1a3d2e;background:#f5f5f0}
+.map-filters{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.map-filters select{padding:8px;border:2px solid #ddd;border-radius:8px;font-size:.8rem;flex:1;min-width:80px}
+.menu-btn.dash{border-left:5px solid #f39c12}
+.menu-btn.timeline{border-left:5px solid #e74c3c}
+.menu-btn.comparador{border-left:5px solid #1abc9c}
 </style>
 </head>
 <body>
@@ -187,9 +238,9 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 </div>
 </div>
 <div class="header"><h1>🌿 RAPCA Campo</h1><span class="sync-status" id="syncStatus">...</span><div class="user-bar" id="userBar" style="display:none"><span class="user-name" id="userName">--</span><span id="userRole" style="font-size:.65rem;opacity:.7">--</span><button class="btn-logout" onclick="cerrarSesion()">Salir</button></div></div>
-<nav class="nav"><button class="nav-btn active" onclick="showPage('menu')">Menú</button><button class="nav-btn" onclick="showPage('vp')">VP</button><button class="nav-btn" onclick="showPage('ev')">EV</button><button class="nav-btn" onclick="showPage('mapa')">Mapa</button><button class="nav-btn" onclick="showPage('ganadero')">Gan.</button><button class="nav-btn" onclick="showPage('infra')">Infra</button><button class="nav-btn" onclick="showPage('panel')">Panel<span id="pendingBadge" class="pending-badge" style="display:none">0</span></button></nav>
+<nav class="nav"><button class="nav-btn active" onclick="showPage('menu')">Menú</button><button class="nav-btn" onclick="showPage('vp')">VP</button><button class="nav-btn" onclick="showPage('ev')">EV</button><button class="nav-btn" onclick="showPage('mapa')">Mapa</button><button class="nav-btn" onclick="showPage('ganadero')">Gan.</button><button class="nav-btn" onclick="showPage('infra')">Infra</button><button class="nav-btn" onclick="showPage('panel')">Panel<span id="pendingBadge" class="pending-badge" style="display:none">0</span></button><button class="nav-btn" onclick="showPage('dashboard')">Dash</button><button class="nav-btn" onclick="showPage('timeline')">Hist.</button><button class="nav-btn" onclick="showPage('comparador')">Comp.</button></nav>
 
-<div id="page-menu" class="page active"><div style="max-width:400px;margin:20px auto"><button id="installBtn" class="menu-btn" style="display:none;background:#27ae60;color:#fff;border-left:5px solid #1e8449" onclick="instalarApp()">📲 Instalar App</button><button class="menu-btn vp" onclick="showPage('vp')">🔍 VP - Visitas Previas</button><button class="menu-btn ev" onclick="showPage('ev')">📊 EV - Evaluación</button><button class="menu-btn mapa" onclick="showPage('mapa')">🗺️ Mapa de Visitas</button><button class="menu-btn panel" onclick="showPage('panel')">📋 Panel de Registros</button><button class="menu-btn ganadero" onclick="showPage('ganadero')">🐄 Ganaderos</button><button class="menu-btn infra" onclick="showPage('infra')">🏗️ Infraestructuras</button><div class="card admin-only" id="adminPanel">
+<div id="page-menu" class="page active"><div style="max-width:400px;margin:20px auto"><button id="installBtn" class="menu-btn" style="display:none;background:#27ae60;color:#fff;border-left:5px solid #1e8449" onclick="instalarApp()">📲 Instalar App</button><button class="menu-btn vp" onclick="showPage('vp')">🔍 VP - Visitas Previas</button><button class="menu-btn ev" onclick="showPage('ev')">📊 EV - Evaluación</button><button class="menu-btn mapa" onclick="showPage('mapa')">🗺️ Mapa de Visitas</button><button class="menu-btn panel" onclick="showPage('panel')">📋 Panel de Registros</button><button class="menu-btn ganadero" onclick="showPage('ganadero')">🐄 Ganaderos</button><button class="menu-btn infra" onclick="showPage('infra')">🏗️ Infraestructuras</button><button class="menu-btn dash" onclick="showPage('dashboard')">📊 Dashboard</button><button class="menu-btn timeline" onclick="showPage('timeline')">📅 Historial</button><button class="menu-btn comparador" onclick="showPage('comparador')">🔄 Comparador Fotos</button><div class="card admin-only" id="adminPanel">
 <div class="card-title" onclick="toggleSection('admin-users-section')"><span>👥 Gestión de Usuarios</span><span style="font-size:.75rem;color:#666">▼</span></div>
 <div class="section-content" id="admin-users-section">
 <div class="form-group"><label>Email *</label><input type="email" id="admin-nuevo-email" placeholder="operador@email.com"></div>
@@ -238,8 +289,13 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <button class="btn-camera" style="background:#27ae60;margin:0;font-size:.85rem" onclick="centrarEnMiPosicion()">📍 Mi posición</button>
 </div>
 <div id="capas-lista" style="margin-top:8px"></div>
+<div class="map-filters">
+<select id="mapa-filtro-tipo" onchange="actualizarMarcadoresMapa()"><option value="">Tipo</option><option value="VP">VP</option><option value="EV">EV</option><option value="infra">Infra</option></select>
+<select id="mapa-filtro-operador" onchange="actualizarMarcadoresMapa()"><option value="">Operador</option></select>
+<input type="date" id="mapa-filtro-desde" onchange="actualizarMarcadoresMapa()" style="min-width:110px" placeholder="Desde">
 </div>
-<div id="mapa" style="height:calc(100vh - 260px);min-height:350px;border-radius:10px;overflow:hidden;box-shadow:0 2px 6px rgba(0,0,0,.15)"></div>
+</div>
+<div id="mapa" style="height:calc(100vh - 300px);min-height:350px;border-radius:10px;overflow:hidden;box-shadow:0 2px 6px rgba(0,0,0,.15)"></div>
 </div>
 
 <div id="page-ganadero" class="page">
@@ -283,6 +339,48 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 
 <div id="page-panel" class="page"><div class="card"><div class="card-title">📋 Registros Guardados</div><button class="btn btn-secondary" onclick="syncPending()">🔄 Sincronizar</button><button class="btn" style="background:#9b59b6;color:#fff" onclick="exportarTodosPDF()">📄 Exportar PDF</button><div id="panelList" style="margin-top:15px"></div></div><div class="card"><button class="btn btn-danger" onclick="borrarTodo()">🗑️ Borrar todo</button></div></div>
 
+<div id="page-dashboard" class="page">
+<div class="dash-filters">
+<select id="dash-filtro-zona" onchange="actualizarDashboard()"><option value="">Zona</option></select>
+<select id="dash-filtro-usuario" onchange="actualizarDashboard()" class="admin-only"><option value="">Operador</option></select>
+<select id="dash-filtro-provincia" onchange="actualizarDashboard()"><option value="">Provincia</option></select>
+<select id="dash-filtro-municipio" onchange="actualizarDashboard()"><option value="">Municipio</option></select>
+<select id="dash-filtro-pn" onchange="actualizarDashboard()"><option value="">PN</option></select>
+</div>
+<div class="dash-metrics" id="dashMetrics"></div>
+<div class="chart-box"><canvas id="chartActividad"></canvas></div>
+<div class="chart-box"><canvas id="chartTipos"></canvas></div>
+<div class="card" id="dashAlertas"><div class="card-title">⚠️ Alertas</div><div id="dashAlertasList"></div></div>
+</div>
+
+<div id="page-timeline" class="page">
+<div class="card"><div class="card-title">📅 Historial de Inspecciones</div>
+<div class="tl-filters">
+<select id="tl-filtro-operador" onchange="actualizarTimeline()"><option value="">Operador</option></select>
+<select id="tl-filtro-unidad" onchange="actualizarTimeline()"><option value="">Unidad</option></select>
+<select id="tl-filtro-tipo" onchange="actualizarTimeline()"><option value="">Tipo</option><option value="VP">VP</option><option value="EV">EV</option></select>
+<input type="date" id="tl-desde" onchange="actualizarTimeline()" style="min-width:130px">
+<input type="date" id="tl-hasta" onchange="actualizarTimeline()" style="min-width:130px">
+</div>
+<div id="timelineList"></div>
+</div>
+</div>
+
+<div id="page-comparador" class="page">
+<div class="card"><div class="card-title">🔄 Comparador de Fotos</div>
+<div class="comp-selector">
+<select id="comp-unidad" onchange="cargarFechasComparador()"><option value="">Selecciona Unidad</option></select>
+<select id="comp-fecha1" onchange="cargarFotosComparador()"><option value="">Fecha A</option></select>
+<select id="comp-fecha2" onchange="cargarFotosComparador()"><option value="">Fecha B</option></select>
+</div>
+<div class="comp-mode">
+<button class="active" onclick="setModoComparador('slider')">Slider</button>
+<button onclick="setModoComparador('side')">Lado a lado</button>
+</div>
+<div id="compResult"></div>
+</div>
+</div>
+
 <div class="camera-modal" id="cameraModal">
 <div class="camera-container">
 <video id="cameraVideo" autoplay playsinline></video>
@@ -309,6 +407,13 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <div class="preview-controls"><button class="btn-preview annotate" id="btnAnotar" onclick="toggleAnotacion()">🔴 Anotar</button><button class="btn-preview repeat" onclick="repetirFoto()">🔄 Repetir</button><button class="btn-preview accept" onclick="aceptarFoto()">✅ Aceptar</button></div>
 </div>
 
+<div class="lightbox" id="lightbox">
+<button class="lb-close" onclick="cerrarLightbox()">✖</button>
+<button class="lb-nav prev" onclick="navLightbox(-1)">◀</button>
+<img id="lbImg" src="">
+<div class="lb-info" id="lbInfo">--</div>
+<button class="lb-nav next" onclick="navLightbox(1)">▶</button>
+</div>
 <div class="loading" id="loading"><div class="spinner"></div></div>
 <div class="toast" id="toast"></div>
 <div class="sync-progress" id="syncProgress">
@@ -326,8 +431,13 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 </div>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="app.js"></script>
+<script src="dashboard.js"></script>
+<script src="timeline.js"></script>
+<script src="comparador.js"></script>
 </body>
 </html>
