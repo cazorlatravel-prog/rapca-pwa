@@ -750,6 +750,16 @@ function iniciarSesion(){
   var pass=document.getElementById('login-password').value;
   if(!email||!pass){mostrarErrorLogin('Email y contraseña requeridos');return;}
   var btn=document.getElementById('btnLogin');btn.textContent='Entrando...';btn.disabled=true;
+  // Intentar login local primero
+  var resultLocal=loginLocal(email,pass);
+  if(resultLocal.ok){
+    btn.textContent='Entrar';btn.disabled=false;
+    sesionActual={token:resultLocal.token,email:resultLocal.usuario.email,nombre:resultLocal.usuario.nombre,rol:resultLocal.usuario.rol,id:resultLocal.usuario.id};
+    localStorage.setItem('rapca_sesion',JSON.stringify(sesionActual));
+    ocultarLoginMostrarApp();
+    return;
+  }
+  // Si local falla, intentar servidor
   fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'login',email:email,password:pass})})
   .then(function(r){
     if(!r.ok)throw new Error('HTTP '+r.status);
@@ -761,22 +771,11 @@ function iniciarSesion(){
       sesionActual={token:data.token,email:data.usuario.email,nombre:data.usuario.nombre,rol:data.usuario.rol,id:data.usuario.id};
       localStorage.setItem('rapca_sesion',JSON.stringify(sesionActual));
       ocultarLoginMostrarApp();
-    }else{mostrarErrorLogin(data.error||'Error de acceso');}
+    }else{mostrarErrorLogin(data.error||'Email o contraseña incorrectos');}
   })
   .catch(function(e){
     btn.textContent='Entrar';btn.disabled=false;
-    // Backend no disponible: usar auth local
-    var result=loginLocal(email,pass);
-    if(result.ok){
-      sesionActual={token:result.token,email:result.usuario.email,nombre:result.usuario.nombre,rol:result.usuario.rol,id:result.usuario.id};
-      localStorage.setItem('rapca_sesion',JSON.stringify(sesionActual));
-      ocultarLoginMostrarApp();
-      showToast('Modo local (sin servidor)','info');
-    }else{
-      var saved=localStorage.getItem('rapca_sesion');
-      if(saved){sesionActual=JSON.parse(saved);ocultarLoginMostrarApp();showToast('Sesión anterior restaurada','info');}
-      else{mostrarErrorLogin(result.error);}
-    }
+    mostrarErrorLogin('Email o contraseña incorrectos');
   });
 }
 function mostrarErrorLogin(msg){var el=document.getElementById('loginError');el.textContent=msg;el.classList.add('show');}
