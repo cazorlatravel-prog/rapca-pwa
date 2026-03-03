@@ -1,4 +1,26 @@
 <?php
+// Capturar errores fatales (memory_limit, etc.) para devolver JSON en vez de 500 genérico
+register_shutdown_function(function() {
+    $err = error_get_last();
+    if ($err && in_array($err['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+        if (!headers_sent()) {
+            header('Content-Type: application/json; charset=utf-8');
+            http_response_code(500);
+        }
+        echo json_encode([
+            'error' => 'Error fatal PHP: ' . $err['message'],
+            'file'  => basename($err['file']),
+            'line'  => $err['line'],
+            'diagnostico' => [
+                'memory_limit'    => ini_get('memory_limit'),
+                'memory_used_mb'  => round(memory_get_peak_usage(true) / 1048576, 1),
+                'post_max_size'   => ini_get('post_max_size'),
+                'max_execution_time' => ini_get('max_execution_time')
+            ]
+        ]);
+    }
+});
+
 require_once 'config.php';
 
 // CORS
@@ -18,21 +40,38 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
+// --- Diagnóstico de límites PHP ---
+$phpLimits = [
+    'post_max_size'      => ini_get('post_max_size'),
+    'upload_max_filesize' => ini_get('upload_max_filesize'),
+    'memory_limit'       => ini_get('memory_limit'),
+    'max_execution_time' => ini_get('max_execution_time')
+];
+
 // Leer JSON del body
 $raw = file_get_contents('php://input');
 if (empty($raw)) {
-    $maxSize = ini_get('post_max_size');
     http_response_code(400);
-    echo json_encode(['error' => 'Payload vacío. post_max_size=' . $maxSize . '. Verificar php.ini']);
+    echo json_encode([
+        'error' => 'Payload vacío. El body no llegó al servidor.',
+        'causa_probable' => 'La foto excede post_max_size (' . $phpLimits['post_max_size'] . '). PHP descarta el body completo cuando se supera este límite.',
+        'solucion' => 'Aumentar post_max_size en php.ini (recomendado: 50M)',
+        'php_limits' => $phpLimits
+    ]);
     exit;
 }
 
+$rawLen = strlen($raw);
 $input = json_decode($raw, true);
 if (!$input) {
     $jsonErr = json_last_error_msg();
-    $rawLen = strlen($raw);
     http_response_code(400);
-    echo json_encode(['error' => 'JSON inválido (tamaño=' . $rawLen . ' bytes, json_error=' . $jsonErr . '). Posible truncamiento por post_max_size=' . ini_get('post_max_size')]);
+    echo json_encode([
+        'error' => 'JSON inválido',
+        'detalle' => 'Tamaño recibido: ' . round($rawLen / 1024) . ' KB, json_error: ' . $jsonErr,
+        'causa_probable' => $rawLen < 1000 ? 'Truncamiento por post_max_size (' . $phpLimits['post_max_size'] . ')' : 'JSON malformado',
+        'php_limits' => $phpLimits
+    ]);
     exit;
 }
 
@@ -47,10 +86,12 @@ if (!$codigo || !$imagen || !$unidad || !$tipo) {
     exit;
 }
 
+$imagenLen = strlen($imagen);
+
 // --- Subir a Cloudinary ---
 if (!function_exists('curl_init')) {
     http_response_code(500);
-    echo json_encode(['error' => 'cURL no disponible en el servidor']);
+    echo json_encode(['error' => 'cURL no disponible en el servidor. Contactar con el hosting.']);
     exit;
 }
 
@@ -89,11 +130,18 @@ curl_setopt_array($ch, [
 $result    = curl_exec($ch);
 $httpCode  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 $curlError = curl_error($ch);
+$curlErrno = curl_errno($ch);
 curl_close($ch);
 
 if ($curlError) {
     http_response_code(500);
-    echo json_encode(['error' => 'Error cURL: ' . $curlError]);
+    $msg = 'Error de conexión con Cloudinary: ' . $curlError . ' (código cURL: ' . $curlErrno . ')';
+    if ($curlErrno === 28) $msg .= '. Timeout: la foto tardó demasiado. Tamaño imagen: ' . round($imagenLen / 1024) . ' KB';
+    if ($curlErrno === 35 || $curlErrno === 60) $msg .= '. Problema SSL del servidor.';
+    echo json_encode([
+        'error'      => $msg,
+        'foto_size_kb' => round($imagenLen / 1024)
+    ]);
     exit;
 }
 
@@ -101,10 +149,22 @@ $cloud = json_decode($result, true);
 
 if ($httpCode !== 200 || !isset($cloud['secure_url'])) {
     http_response_code(500);
+
+    // Mensajes específicos según código HTTP de Cloudinary
+    $causas = [
+        401 => 'Credenciales de Cloudinary inválidas (API key o secret). Revisar config.php.',
+        400 => 'Petición rechazada por Cloudinary. ' . ($cloud['error']['message'] ?? 'Revisar formato de imagen.'),
+        413 => 'Foto demasiado grande para Cloudinary. Tamaño: ' . round($imagenLen / 1024) . ' KB.',
+        420 => 'Demasiadas peticiones a Cloudinary (rate limit). Esperar unos minutos.',
+        500 => 'Error interno de Cloudinary. Reintentar más tarde.'
+    ];
+
     echo json_encode([
-        'error'     => 'Error Cloudinary',
-        'http_code' => $httpCode,
-        'response'  => $cloud
+        'error'          => 'Error Cloudinary (HTTP ' . $httpCode . ')',
+        'causa'          => $causas[$httpCode] ?? ('Respuesta inesperada de Cloudinary: HTTP ' . $httpCode),
+        'cloudinary_msg' => $cloud['error']['message'] ?? ($cloud['error'] ?? null),
+        'foto_size_kb'   => round($imagenLen / 1024),
+        'php_limits'     => $phpLimits
     ]);
     exit;
 }

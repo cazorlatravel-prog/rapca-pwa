@@ -214,11 +214,14 @@ function procesarSubidasPendientes(){
     };
   }catch(e){console.error('Error procesando subidas:',e);}
 }
+function extraerErrorSubida(text){
+  try{var j=JSON.parse(text);var msg=j.error||'Error desconocido';if(j.causa)msg+='. '+j.causa;if(j.cloudinary_msg)msg+='. Cloudinary: '+j.cloudinary_msg;if(j.diagnostico)msg+='. Memoria: '+j.diagnostico.memory_used_mb+'MB de '+j.diagnostico.memory_limit;return msg;}catch(e){return text.substring(0,200);}
+}
 function subirFotoNube(codigo,dataUrl,unidad,tipo){
   if(!isOnline)return;
   var payload=JSON.stringify({codigo:codigo,imagen:dataUrl,unidad:unidad,tipo:tipo});
   console.log('Subiendo '+codigo+' ('+Math.round(payload.length/1024)+'KB)');
-  fetch(UPLOAD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:payload}).then(function(res){if(!res.ok)return res.text().then(function(t){throw new Error('HTTP '+res.status+': '+t);});return res.json();}).then(function(data){if(data.ok){eliminarSubidaPendiente(codigo);showToast('☁️ '+codigo,'success');}else throw new Error(data.error||'Error servidor');}).catch(function(err){console.error('Error subida '+codigo+':',err.message);showToast('⚠️ '+codigo+': '+err.message,'error');});
+  fetch(UPLOAD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:payload}).then(function(res){if(!res.ok)return res.text().then(function(t){var msg=extraerErrorSubida(t);throw new Error('HTTP '+res.status+': '+msg);});return res.json();}).then(function(data){if(data.ok){eliminarSubidaPendiente(codigo);showToast('☁️ '+codigo,'success');}else throw new Error(data.error||'Error servidor');}).catch(function(err){console.error('Error subida '+codigo+':',err.message);showToast('⚠️ '+codigo+': '+err.message,'error');});
 }
 // Procesamiento secuencial de cola con reintentos
 function procesarColaSec(lista,idx){
@@ -236,7 +239,7 @@ function subirConReintentos(codigo,dataUrl,unidad,tipo,maxI,cb){
   function intentar(){
     i++;
     console.log('Subida '+codigo+' intento '+i+'/'+maxI);
-    fetch(UPLOAD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codigo:codigo,imagen:dataUrl,unidad:unidad,tipo:tipo})}).then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error('HTTP '+r.status+': '+t);});return r.json();}).then(function(d){if(d.ok){eliminarSubidaPendiente(codigo);console.log('Subida OK: '+codigo+(d.url?' → '+d.url:''));cb(true);}else throw new Error(d.error||'Error servidor');}).catch(function(e){console.error('Intento '+i+'/'+maxI+' '+codigo+':',e.message);if(i<maxI&&isOnline)setTimeout(intentar,i*2000);else{showToast('❌ '+codigo+': '+e.message,'error');cb(false);}});
+    fetch(UPLOAD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codigo:codigo,imagen:dataUrl,unidad:unidad,tipo:tipo})}).then(function(r){if(!r.ok)return r.text().then(function(t){var msg=extraerErrorSubida(t);throw new Error('HTTP '+r.status+': '+msg);});return r.json();}).then(function(d){if(d.ok){eliminarSubidaPendiente(codigo);console.log('Subida OK: '+codigo+(d.url?' → '+d.url:''));cb(true);}else throw new Error(d.error||'Error servidor');}).catch(function(e){console.error('Intento '+i+'/'+maxI+' '+codigo+':',e.message);if(i<maxI&&isOnline)setTimeout(intentar,i*2000);else{showToast('❌ '+codigo+': '+e.message,'error');cb(false);}});
   }
   intentar();
 }
