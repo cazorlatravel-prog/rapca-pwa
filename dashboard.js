@@ -7,7 +7,7 @@ function initDashboard(){
 }
 
 function poblarFiltrosDashboard(){
-  var rs=getRegistros(),infras=getInfras();
+  var rs=getRegistrosUsuario(),infras=getInfras();
   var zonas={},provs={},munis={},pns={},ops={};
   rs.forEach(function(r){
     if(r.zona)zonas[r.zona]=true;
@@ -66,7 +66,7 @@ function actualizarDashboard(){
 }
 
 function filtrarRegistrosDash(){
-  var rs=getRegistros();
+  var rs=getRegistrosUsuario();
   var zona=document.getElementById('dash-filtro-zona')?document.getElementById('dash-filtro-zona').value:'';
   var usuario=document.getElementById('dash-filtro-usuario')?document.getElementById('dash-filtro-usuario').value:'';
   // Filtrar por provincia/municipio/pn usando infras como referencia

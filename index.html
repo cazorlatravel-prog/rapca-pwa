@@ -164,8 +164,9 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .user-bar{background:rgba(255,255,255,.15);padding:4px 12px;border-radius:8px;font-size:.75rem;display:flex;align-items:center;gap:8px;margin-top:6px;justify-content:center}
 .user-bar .user-name{font-weight:bold}
 .user-bar .btn-logout{background:rgba(255,255,255,.25);border:none;color:#fff;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:.7rem}
-.admin-only{display:none}
-.admin-visible .admin-only{display:block}
+.admin-only{display:none!important}
+.admin-visible .admin-only{display:block!important}
+.admin-visible select.admin-only{display:inline-block!important}
 .user-card{background:#fff;border-radius:8px;padding:12px;margin-bottom:8px;box-shadow:0 1px 4px rgba(0,0,0,.08);border-left:4px solid #5b8c5a;display:flex;justify-content:space-between;align-items:center}
 .user-card.inactive{opacity:.5;border-left-color:#e74c3c}
 .user-card .uc-info{flex:1}
@@ -333,7 +334,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <div id="capas-lista" style="margin-top:8px"></div>
 <div class="map-filters">
 <select id="mapa-filtro-tipo" onchange="actualizarMarcadoresMapa()"><option value="">Tipo</option><option value="VP">VP</option><option value="EL">EL</option><option value="EI">EI</option><option value="infra">Infra</option></select>
-<select id="mapa-filtro-operador" onchange="actualizarMarcadoresMapa()"><option value="">Operador</option></select>
+<select id="mapa-filtro-operador" onchange="actualizarMarcadoresMapa()" class="admin-only"><option value="">Operador</option></select>
 <input type="date" id="mapa-filtro-desde" onchange="actualizarMarcadoresMapa()" style="min-width:110px" placeholder="Desde">
 </div>
 </div>
@@ -399,7 +400,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <div id="page-timeline" class="page">
 <div class="card"><div class="card-title">📅 Historial de Inspecciones</div>
 <div class="tl-filters">
-<select id="tl-filtro-operador" onchange="actualizarTimeline()"><option value="">Operador</option></select>
+<select id="tl-filtro-operador" onchange="actualizarTimeline()" class="admin-only"><option value="">Operador</option></select>
 <select id="tl-filtro-unidad" onchange="actualizarTimeline()"><option value="">Unidad</option></select>
 <select id="tl-filtro-tipo" onchange="actualizarTimeline()"><option value="">Tipo</option><option value="VP">VP</option><option value="EL">EL</option><option value="EI">EI</option></select>
 <input type="date" id="tl-desde" onchange="actualizarTimeline()" style="min-width:130px">

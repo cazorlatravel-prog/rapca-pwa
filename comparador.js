@@ -2,7 +2,7 @@
 var compModo='slider';
 
 function initComparador(){
-  var rs=getRegistros();
+  var rs=getRegistrosUsuario();
   var unidades={};
   rs.forEach(function(r){if(r.unidad)unidades[r.unidad]=true;});
   var sel=document.getElementById('comp-unidad');
@@ -22,7 +22,7 @@ function cargarFechasComparador(){
   document.getElementById('compResult').innerHTML='';
   if(!unidad)return;
 
-  var rs=getRegistros().filter(function(r){return r.unidad===unidad;});
+  var rs=getRegistrosUsuario().filter(function(r){return r.unidad===unidad;});
   var fechas={};
   rs.forEach(function(r){
     var key=r.fecha+'_'+r.tipo+(r.transecto?'_'+r.transecto:'');
@@ -43,7 +43,7 @@ function cargarFotosComparador(){
   var id2=parseInt(document.getElementById('comp-fecha2').value);
   if(!id1||!id2){document.getElementById('compResult').innerHTML='<p style="text-align:center;color:#888;padding:20px">Selecciona dos fechas para comparar</p>';return;}
 
-  var rs=getRegistros();
+  var rs=getRegistrosUsuario();
   var r1=rs.find(function(x){return x.id===id1;});
   var r2=rs.find(function(x){return x.id===id2;});
   if(!r1||!r2)return;
