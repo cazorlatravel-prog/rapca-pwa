@@ -553,6 +553,214 @@ function toggleMapaSearchFS(){
   else{el.style.display='block';document.getElementById('mapa-search-fs').focus();}
 }
 
+// --- Exportar Mapa PDF por Unidad ---
+function abrirExportarMapaPDF(){
+  var panel=document.getElementById('mapa-pdf-panel');
+  var sel=document.getElementById('mapa-pdf-unidad');
+  // Poblar selector con unidades de infraestructuras
+  var infras=getInfras();
+  var h='<option value="">Selecciona unidad...</option>';
+  infras.forEach(function(inf){
+    h+='<option value="'+inf.id+'">'+(inf.idUnidad||'--')+' — '+(inf.nombre||'Sin nombre')+'</option>';
+  });
+  // Añadir unidades de registros que no tengan infraestructura
+  var rs=getRegistrosUsuario();
+  var unidadesInfra={};
+  infras.forEach(function(inf){if(inf.idUnidad)unidadesInfra[inf.idUnidad.toUpperCase()]=true;});
+  var unidadesSueltas={};
+  rs.forEach(function(r){
+    if(r.unidad){var u=r.unidad.toUpperCase();if(!unidadesInfra[u]&&!unidadesSueltas[u]){unidadesSueltas[u]=r.unidad;}}
+  });
+  Object.keys(unidadesSueltas).forEach(function(u){
+    h+='<option value="reg_'+u+'">'+unidadesSueltas[u]+' (solo registros)</option>';
+  });
+  sel.innerHTML=h;
+  panel.style.display='block';
+}
+
+function exportarMapaUnidadPDF(){
+  var sel=document.getElementById('mapa-pdf-unidad');
+  var val=sel.value;
+  if(!val){showToast('Selecciona una unidad','error');return;}
+
+  showLoading(true);
+  var infra=null,unidadId='';
+  if(val.indexOf('reg_')===0){
+    unidadId=val.replace('reg_','');
+  }else{
+    var infras=getInfras();
+    infra=infras.find(function(i){return i.id===parseInt(val)||i.id===val;});
+    if(infra)unidadId=infra.idUnidad||'';
+  }
+
+  // Recopilar registros de esta unidad
+  var rs=getRegistrosUsuario().filter(function(r){
+    return r.unidad&&r.unidad.toUpperCase()===unidadId.toUpperCase();
+  });
+  var vpCount=0,elCount=0,eiCount=0;
+  rs.forEach(function(r){if(r.tipo==='VP')vpCount++;else if(r.tipo==='EL')elCount++;else eiCount++;});
+
+  // Centrar mapa en la unidad si tiene coordenadas
+  var lat=null,lon=null;
+  if(infra&&infra.lat&&infra.lon){lat=parseFloat(infra.lat);lon=parseFloat(infra.lon);}
+  else{
+    // Buscar coordenadas en los registros
+    for(var i=0;i<rs.length;i++){if(rs[i].lat&&rs[i].lon){lat=rs[i].lat;lon=rs[i].lon;break;}}
+  }
+
+  if(lat&&lon&&mapaLeaflet){
+    mapaLeaflet.setView([lat,lon],15);
+    setTimeout(function(){capturarYGenerarPDF(infra,unidadId,rs,vpCount,elCount,eiCount,lat,lon);},800);
+  }else{
+    capturarYGenerarPDF(infra,unidadId,rs,vpCount,elCount,eiCount,lat,lon);
+  }
+}
+
+function capturarYGenerarPDF(infra,unidadId,rs,vpCount,elCount,eiCount,lat,lon){
+  var mapaEl=document.getElementById('mapa');
+
+  function generarConImagen(imgData){
+    var html=generarHTMLMapaPDF(infra,unidadId,rs,vpCount,elCount,eiCount,lat,lon,imgData);
+    var w=window.open('','_blank');
+    if(!w){showToast('Permite ventanas emergentes para generar PDF','error');showLoading(false);return;}
+    w.document.write(html);
+    w.document.close();
+    showLoading(false);
+    document.getElementById('mapa-pdf-panel').style.display='none';
+  }
+
+  // Intentar capturar mapa con html2canvas
+  if(typeof html2canvas!=='undefined'&&mapaEl){
+    html2canvas(mapaEl,{useCORS:true,allowTaint:true,scale:2,logging:false}).then(function(canvas){
+      generarConImagen(canvas.toDataURL('image/jpeg',0.85));
+    }).catch(function(e){
+      console.error('Error capturando mapa:',e);
+      // Generar sin imagen del mapa
+      generarConImagen(null);
+    });
+  }else{
+    generarConImagen(null);
+  }
+}
+
+function generarHTMLMapaPDF(infra,unidadId,rs,vpCount,elCount,eiCount,lat,lon,imgData){
+  var fecha=new Date().toLocaleDateString('es-ES',{year:'numeric',month:'long',day:'numeric'});
+  var h='<!DOCTYPE html><html><head><meta charset="utf-8"><title>RAPCA — Mapa '+(unidadId||'Unidad')+'</title>';
+  h+='<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;padding:20px;max-width:900px;margin:0 auto;color:#333}';
+  h+='.header{background:linear-gradient(135deg,#1a3d2e,#2d6a4f);color:#fff;padding:20px 24px;border-radius:12px;margin-bottom:20px}';
+  h+='.header h1{font-size:1.5rem;margin-bottom:4px}.header .sub{font-size:.9rem;opacity:.85}';
+  h+='.card{background:#fff;border:1px solid #ddd;border-radius:10px;padding:16px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.06)}';
+  h+='.card-title{font-weight:bold;color:#1a3d2e;font-size:1.05rem;margin-bottom:10px;border-bottom:2px solid #e8e8e8;padding-bottom:6px}';
+  h+='.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.info-item{font-size:.85rem}.info-label{font-weight:bold;color:#555;font-size:.75rem;text-transform:uppercase}.info-value{color:#1a3d2e}';
+  h+='.badges{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.badge{padding:6px 14px;border-radius:20px;font-size:.85rem;font-weight:bold;color:#fff}';
+  h+='.badge-vp{background:#88d8b0;color:#1a3d2e}.badge-el{background:#2ecc71}.badge-ei{background:#fd9853}';
+  h+='.mapa-img{width:100%;border-radius:10px;border:2px solid #ddd;margin:10px 0}';
+  h+='.reg-table{width:100%;border-collapse:collapse;font-size:.8rem;margin-top:8px}';
+  h+='.reg-table th{background:#1a3d2e;color:#fff;padding:8px;text-align:left}.reg-table td{padding:6px 8px;border-bottom:1px solid #eee}';
+  h+='.reg-table tr:nth-child(even){background:#f9f9f9}';
+  h+='.tipo-tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.75rem;font-weight:bold;color:#fff}';
+  h+='.tipo-vp{background:#88d8b0;color:#1a3d2e}.tipo-el{background:#2ecc71}.tipo-ei{background:#fd9853}';
+  h+='.footer{text-align:center;color:#999;font-size:.75rem;margin-top:20px;padding-top:10px;border-top:1px solid #eee}';
+  h+='@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;padding:10px}img{max-width:100%;height:auto}}';
+  h+='</style></head><body>';
+
+  // Header
+  h+='<div class="header"><h1>RAPCA Campo — Informe de Unidad</h1>';
+  h+='<div class="sub">'+(unidadId||'Sin ID')+' — '+fecha+'</div></div>';
+
+  // Datos de infraestructura
+  if(infra){
+    h+='<div class="card"><div class="card-title">🌳 Datos de Infraestructura</div>';
+    h+='<div class="info-grid">';
+    var campos=[
+      {l:'ID Unidad',v:infra.idUnidad},{l:'ID Zona',v:infra.idZona},
+      {l:'Nombre',v:infra.nombre},{l:'Cod INFOCA',v:infra.codInfoca},
+      {l:'Provincia',v:infra.provincia},{l:'Municipio',v:infra.municipio},
+      {l:'PN',v:infra.pn},{l:'Contrato',v:infra.contrato},
+      {l:'Superficie',v:infra.superficie},{l:'Pago Máximo',v:infra.pagoMaximo},
+      {l:'Vegetación',v:infra.vegetacion},{l:'Pendiente',v:infra.pendiente},
+      {l:'Distancia',v:infra.distancia}
+    ];
+    campos.forEach(function(c){
+      if(c.v)h+='<div class="info-item"><div class="info-label">'+c.l+'</div><div class="info-value">'+c.v+'</div></div>';
+    });
+    // Campos extra
+    if(infra.extras){
+      Object.keys(infra.extras).forEach(function(k){
+        if(infra.extras[k])h+='<div class="info-item"><div class="info-label">'+k+'</div><div class="info-value">'+infra.extras[k]+'</div></div>';
+      });
+    }
+    h+='</div></div>';
+  }
+
+  // Resumen de visitas
+  h+='<div class="card"><div class="card-title">📊 Resumen de Visitas</div>';
+  h+='<div class="badges">';
+  h+='<div class="badge badge-vp">VP: '+vpCount+'</div>';
+  h+='<div class="badge badge-el">EL: '+elCount+'</div>';
+  h+='<div class="badge badge-ei">EI: '+eiCount+'</div>';
+  h+='<div class="badge" style="background:#9b59b6">Total: '+rs.length+'</div>';
+  h+='</div>';
+  if(lat&&lon){
+    h+='<div style="font-size:.8rem;color:#666;margin-top:4px">Coordenadas: '+parseFloat(lat).toFixed(6)+', '+parseFloat(lon).toFixed(6)+'</div>';
+  }
+  h+='</div>';
+
+  // Imagen del mapa
+  if(imgData){
+    h+='<div class="card"><div class="card-title">🗺️ Localización en Mapa</div>';
+    h+='<img src="'+imgData+'" class="mapa-img" alt="Mapa de la unidad '+unidadId+'">';
+    h+='</div>';
+  }
+
+  // Tabla de registros
+  if(rs.length>0){
+    h+='<div class="card"><div class="card-title">📋 Detalle de Registros ('+rs.length+')</div>';
+    h+='<table class="reg-table"><thead><tr><th>Tipo</th><th>Fecha</th><th>Transecto</th><th>Operador</th><th>Fotos</th><th>Enviado</th></tr></thead><tbody>';
+    rs.sort(function(a,b){return a.fecha>b.fecha?-1:1;});
+    rs.forEach(function(r){
+      var tipoClass=r.tipo==='VP'?'tipo-vp':r.tipo==='EL'?'tipo-el':'tipo-ei';
+      var d=r.datos||{};
+      var nFotos=0;
+      if(d.fotos)nFotos+=d.fotos.split(',').filter(function(x){return x.trim();}).length;
+      if(d.fotosComp)d.fotosComp.forEach(function(fc){if(fc.numero)nFotos+=fc.numero.split(',').filter(function(x){return x.trim();}).length;});
+      h+='<tr><td><span class="tipo-tag '+tipoClass+'">'+r.tipo+'</span></td>';
+      h+='<td>'+r.fecha+'</td>';
+      h+='<td>'+(r.transecto||'-')+'</td>';
+      h+='<td>'+(r.operador_nombre||'-')+'</td>';
+      h+='<td>'+nFotos+'</td>';
+      h+='<td>'+(r.enviado?'✅':'⏳')+'</td></tr>';
+    });
+    h+='</tbody></table></div>';
+  }
+
+  // Detalle de pastoreo y observaciones por registro
+  rs.forEach(function(r){
+    var d=r.datos||{};
+    var hasDatos=d.pastoreo||d.observacionPastoreo||d.observaciones;
+    if(!hasDatos)return;
+    h+='<div class="card"><div class="card-title">'+r.tipo+' — '+r.fecha+(r.transecto?' (T'+r.transecto+')':'')+'</div>';
+    if(d.pastoreo&&d.pastoreo.length>0){
+      var labels=['Grado 1','Grado 2','Grado 3'];
+      h+='<div style="margin-bottom:8px"><strong>Pastoreo:</strong> '+d.pastoreo.map(function(v,i){return labels[i]+': '+(v||'-');}).join(' | ')+'</div>';
+    }
+    if(d.observacionPastoreo){
+      var op=d.observacionPastoreo;
+      h+='<div style="margin-bottom:8px"><strong>Obs. Pastoreo:</strong> Señal: '+(op.senal||'-')+' | Veredas: '+(op.veredas||'-')+' | Cagarrutas: '+(op.cagarrutas||'-')+'</div>';
+    }
+    if(d.observaciones){
+      h+='<div style="background:#fffde7;padding:8px;border-radius:6px;font-size:.85rem"><strong>Observaciones:</strong> '+d.observaciones+'</div>';
+    }
+    h+='</div>';
+  });
+
+  // Footer
+  h+='<div class="footer">Generado por RAPCA Campo — '+fecha+'</div>';
+  h+='<script>setTimeout(function(){window.print();},1200);<\/script>';
+  h+='</body></html>';
+  return h;
+}
+
 // --- Capa de puntos comparativos y buscador ---
 var capaComparativas=null;
 var puntosComparativos=[];
