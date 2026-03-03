@@ -10,6 +10,23 @@ var deferredPrompt=null,mapTilesLoaded=[];
 var mapaLeaflet=null,controlCapas=null,capasKML={},capasKMLRaw={},marcadorPosicion=null;
 var syncEnProgreso=false,syncStats={total:0,ok:0,fail:0},fallosSubida=[];
 var anotaciones=[],modoAnotacion=false;
+var editandoGanaderoId=null,editandoInfraId=null;
+var camposExtraGan=[],camposExtraInf=[];
+var INFRA_CAMPOS_BASE=[
+  {key:'provincia',label:'PROVINCIA',id:'inf-provincia'},
+  {key:'idZona',label:'ID ZONA',id:'inf-idzona'},
+  {key:'idUnidad',label:'ID UNIDAD',id:'inf-idunidad'},
+  {key:'codInfoca',label:'COD INFOCA',id:'inf-codinfoca'},
+  {key:'nombre',label:'NOMBRE',id:'inf-nombre'},
+  {key:'superficie',label:'SUPERFICIE',id:'inf-superficie'},
+  {key:'pagoMaximo',label:'PAGO MAXIMO',id:'inf-pagomax'},
+  {key:'municipio',label:'MUNICIPIO',id:'inf-municipio'},
+  {key:'pn',label:'PN',id:'inf-pn'},
+  {key:'contrato',label:'CONTRATO',id:'inf-contrato'},
+  {key:'vegetacion',label:'VEGETACION',id:'inf-vegetacion'},
+  {key:'pendiente',label:'PENDIENTE',id:'inf-pendiente'},
+  {key:'distancia',label:'DISTANCIA',id:'inf-distancia'}
+];
 var fotosDB=null;
 var fotosCacheMemoria={}; // Cache en memoria como respaldo
 
@@ -591,7 +608,7 @@ document.addEventListener('DOMContentLoaded',function(){
   });
   var t=new Date().toISOString().split('T')[0];document.getElementById('vp-fecha').value=t;document.getElementById('ev-fecha').value=t;
   var cVP=localStorage.getItem('rapca_contadores_VP'),cEV=localStorage.getItem('rapca_contadores_EV');if(cVP)contadorFotosVP=JSON.parse(cVP);if(cEV)contadorFotosEV=JSON.parse(cEV);
-  generarPlantas();generarPalatables();generarHerbaceas();updateSyncStatus();updatePendingCount();loadPanel();cargarBorradores();iniciarGeolocalizacion();initPreviewListeners();
+  generarPlantas();generarPalatables();generarHerbaceas();updateSyncStatus();updatePendingCount();loadPanel();cargarBorradores();iniciarGeolocalizacion();initPreviewListeners();initCamposExtra();
   window.addEventListener('online',function(){isOnline=true;updateSyncStatus();procesarSubidasPendientes();});window.addEventListener('offline',function(){isOnline=false;updateSyncStatus();});
   document.addEventListener('click',function(e){if(!e.target.closest('.autocomplete-wrapper'))document.querySelectorAll('.autocomplete-list').forEach(function(l){l.classList.remove('show');});});
   if(window.matchMedia('(display-mode: standalone)').matches){var b=document.getElementById('installBtn');if(b)b.style.display='none';}
@@ -610,7 +627,7 @@ function showAutocomplete(i){var l=document.getElementById('ac-'+i.id);if(!l)ret
 function filterAutocomplete(i){if(currentAutocomplete&&currentAutocomplete.input===i)renderAutocompleteList(i.value);}
 function renderAutocompleteList(f){if(!currentAutocomplete)return;var l=currentAutocomplete.list,fL=f.toLowerCase(),h='';PLANTAS.filter(function(p){return p.toLowerCase().indexOf(fL)!==-1;}).forEach(function(p){h+='<div class="autocomplete-item" onclick="selectAutocomplete(\''+p.replace(/'/g,"\\'")+'\')">'+p+'</div>';});l.innerHTML=h||'<div class="autocomplete-item" style="color:#999">Sin resultados</div>';}
 function selectAutocomplete(v){if(currentAutocomplete){currentAutocomplete.input.value=v;currentAutocomplete.list.classList.remove('show');actualizarResumenMatorral();currentAutocomplete=null;}}
-function showPage(p){document.querySelectorAll('.page').forEach(function(x){x.classList.remove('active');});document.querySelectorAll('.nav-btn').forEach(function(b){b.classList.remove('active');});document.getElementById('page-'+p).classList.add('active');document.querySelectorAll('.nav-btn')[['menu','vp','ev','mapa','panel'].indexOf(p)].classList.add('active');if(p==='panel')loadPanel();if(p==='mapa'){setTimeout(function(){initMapa();if(mapaLeaflet)mapaLeaflet.invalidateSize();},100);}window.scrollTo(0,0);}
+function showPage(p){document.querySelectorAll('.page').forEach(function(x){x.classList.remove('active');});document.querySelectorAll('.nav-btn').forEach(function(b){b.classList.remove('active');});document.getElementById('page-'+p).classList.add('active');document.querySelectorAll('.nav-btn')[['menu','vp','ev','mapa','ganadero','infra','panel'].indexOf(p)].classList.add('active');if(p==='panel')loadPanel();if(p==='mapa'){setTimeout(function(){initMapa();if(mapaLeaflet)mapaLeaflet.invalidateSize();},100);}if(p==='ganadero')cargarListaGanaderos();if(p==='infra')cargarListaInfra();window.scrollTo(0,0);}
 function toggleSection(id){document.getElementById(id).classList.toggle('open');}
 function setTransecto(n){transectoActual=n;document.querySelectorAll('.transecto-btn').forEach(function(b,i){b.classList.toggle('active',i===n-1);});document.getElementById('btnGuardarEV').textContent='💾 Guardar EV - T'+n;}
 function guardarBorradores(){localStorage.setItem('rapca_borrador_vp',JSON.stringify(obtenerDatosVP()));localStorage.setItem('rapca_borrador_ev',JSON.stringify(obtenerDatosEV()));}
@@ -753,3 +770,213 @@ async function exportarTodosPDF(){
 function updateSyncStatus(){var e=document.getElementById('syncStatus');e.textContent=isOnline?'Online':'Offline';e.className='sync-status '+(isOnline?'online':'offline');}
 function showLoading(s){document.getElementById('loading').classList.toggle('show',s);}
 function showToast(m,t){var e=document.getElementById('toast');e.textContent=m;e.className='toast show '+(t||'info');setTimeout(function(){e.classList.remove('show');},3000);}
+
+// --- Ganaderos ---
+function initCamposExtra(){
+  var g=localStorage.getItem('rapca_campos_ganadero');
+  var i=localStorage.getItem('rapca_campos_infra');
+  if(g)camposExtraGan=JSON.parse(g);
+  if(i)camposExtraInf=JSON.parse(i);
+  renderCamposExtraGan();renderCamposExtraInf();
+}
+function getGanaderos(){var d=localStorage.getItem('rapca_ganaderos');return d?JSON.parse(d):[];}
+function guardarGanaderos(lista){localStorage.setItem('rapca_ganaderos',JSON.stringify(lista));}
+function guardarGanadero(){
+  var idG=document.getElementById('gan-id').value.trim();
+  if(!idG){showToast('ID Ganadero obligatorio','error');return;}
+  var r={id:editandoGanaderoId||Date.now(),idGanadero:idG,zonas:document.getElementById('gan-zonas').value.trim(),nombre:document.getElementById('gan-nombre').value.trim(),direccion:document.getElementById('gan-direccion').value.trim(),telefono:document.getElementById('gan-telefono').value.trim(),email:document.getElementById('gan-email').value.trim(),observaciones:document.getElementById('gan-obs').value.trim(),extras:{}};
+  camposExtraGan.forEach(function(c){var el=document.getElementById('gan-extra-'+c.replace(/\s/g,'_'));if(el)r.extras[c]=el.value.trim();});
+  var lista=getGanaderos();
+  if(editandoGanaderoId){for(var i=0;i<lista.length;i++)if(lista[i].id===editandoGanaderoId){lista[i]=r;break;}editandoGanaderoId=null;}
+  else{lista.push(r);}
+  guardarGanaderos(lista);showToast('Ganadero guardado','success');limpiarFormGanadero();cargarListaGanaderos();
+}
+function limpiarFormGanadero(){
+  editandoGanaderoId=null;
+  ['gan-id','gan-zonas','gan-nombre','gan-direccion','gan-telefono','gan-email','gan-obs'].forEach(function(id){document.getElementById(id).value='';});
+  camposExtraGan.forEach(function(c){var el=document.getElementById('gan-extra-'+c.replace(/\s/g,'_'));if(el)el.value='';});
+}
+function cargarListaGanaderos(){
+  var lista=getGanaderos(),buscar=document.getElementById('gan-buscar')?document.getElementById('gan-buscar').value.toLowerCase():'';
+  var el=document.getElementById('ganaderoList');if(!el)return;
+  var cnt=document.getElementById('ganaderoCount');
+  var filtrados=buscar?lista.filter(function(r){return(r.idGanadero+' '+r.nombre+' '+r.zonas).toLowerCase().indexOf(buscar)!==-1;}):lista;
+  if(cnt)cnt.textContent=filtrados.length;
+  if(filtrados.length===0){el.innerHTML='<p style="text-align:center;color:#888;padding:15px">Sin ganaderos</p>';return;}
+  var h='';
+  filtrados.forEach(function(r){
+    h+='<div class="record-card ganadero"><div class="rc-title">'+r.idGanadero+' — '+(r.nombre||'Sin nombre')+'</div>';
+    h+='<div class="rc-info">';
+    if(r.zonas)h+='Zonas: '+r.zonas+'<br>';
+    if(r.telefono)h+='Tel: '+r.telefono;
+    if(r.email)h+=(r.telefono?' | ':'')+r.email;
+    h+='</div>';
+    h+='<div class="rc-actions"><button class="btn-small edit" onclick="editarGanadero('+r.id+')">✏️</button><button class="btn-small delete" onclick="eliminarGanadero('+r.id+')">🗑️</button></div></div>';
+  });
+  el.innerHTML=h;
+}
+function editarGanadero(id){
+  var lista=getGanaderos(),r=lista.find(function(x){return x.id===id;});
+  if(!r)return;editandoGanaderoId=id;
+  document.getElementById('gan-id').value=r.idGanadero||'';
+  document.getElementById('gan-zonas').value=r.zonas||'';
+  document.getElementById('gan-nombre').value=r.nombre||'';
+  document.getElementById('gan-direccion').value=r.direccion||'';
+  document.getElementById('gan-telefono').value=r.telefono||'';
+  document.getElementById('gan-email').value=r.email||'';
+  document.getElementById('gan-obs').value=r.observaciones||'';
+  if(r.extras)camposExtraGan.forEach(function(c){var el=document.getElementById('gan-extra-'+c.replace(/\s/g,'_'));if(el)el.value=r.extras[c]||'';});
+  window.scrollTo(0,0);showToast('Editando ganadero','info');
+}
+function eliminarGanadero(id){
+  if(!confirm('¿Eliminar ganadero?'))return;
+  guardarGanaderos(getGanaderos().filter(function(r){return r.id!==id;}));
+  cargarListaGanaderos();showToast('Eliminado','info');
+}
+function agregarCampoGanadero(){
+  var nombre=prompt('Nombre del nuevo campo:');
+  if(!nombre||!nombre.trim())return;nombre=nombre.trim();
+  if(camposExtraGan.indexOf(nombre)!==-1){showToast('Campo ya existe','error');return;}
+  camposExtraGan.push(nombre);localStorage.setItem('rapca_campos_ganadero',JSON.stringify(camposExtraGan));renderCamposExtraGan();
+}
+function eliminarCampoGan(nombre){
+  if(!confirm('¿Eliminar campo "'+nombre+'"?'))return;
+  camposExtraGan=camposExtraGan.filter(function(c){return c!==nombre;});
+  localStorage.setItem('rapca_campos_ganadero',JSON.stringify(camposExtraGan));renderCamposExtraGan();
+}
+function renderCamposExtraGan(){
+  var el=document.getElementById('gan-campos-extra');if(!el)return;
+  var h='';
+  camposExtraGan.forEach(function(c){
+    var safeId='gan-extra-'+c.replace(/\s/g,'_');
+    h+='<div class="campo-extra"><div class="form-group"><label>'+c+'</label><input type="text" id="'+safeId+'"></div><button class="btn-remove" onclick="eliminarCampoGan(\''+c.replace(/'/g,"\\'")+'\')">✖</button></div>';
+  });
+  el.innerHTML=h;
+}
+
+// --- Infraestructuras ---
+function getInfras(){var d=localStorage.getItem('rapca_infraestructuras');return d?JSON.parse(d):[];}
+function guardarInfras(lista){localStorage.setItem('rapca_infraestructuras',JSON.stringify(lista));}
+function guardarInfra(){
+  var r={id:editandoInfraId||Date.now(),extras:{}};
+  INFRA_CAMPOS_BASE.forEach(function(c){r[c.key]=document.getElementById(c.id).value.trim();});
+  camposExtraInf.forEach(function(c){var el=document.getElementById('inf-extra-'+c.replace(/\s/g,'_'));if(el)r.extras[c]=el.value.trim();});
+  if(!r.idUnidad&&!r.nombre){showToast('ID Unidad o Nombre obligatorio','error');return;}
+  var lista=getInfras();
+  if(editandoInfraId){for(var i=0;i<lista.length;i++)if(lista[i].id===editandoInfraId){lista[i]=r;break;}editandoInfraId=null;}
+  else{lista.push(r);}
+  guardarInfras(lista);showToast('Infraestructura guardada','success');limpiarFormInfra();cargarListaInfra();
+}
+function limpiarFormInfra(){
+  editandoInfraId=null;
+  INFRA_CAMPOS_BASE.forEach(function(c){document.getElementById(c.id).value='';});
+  camposExtraInf.forEach(function(c){var el=document.getElementById('inf-extra-'+c.replace(/\s/g,'_'));if(el)el.value='';});
+}
+function cargarListaInfra(){
+  var lista=getInfras(),buscar=document.getElementById('inf-buscar')?document.getElementById('inf-buscar').value.toLowerCase():'';
+  var el=document.getElementById('infraList');if(!el)return;
+  var cnt=document.getElementById('infraCount');
+  var filtrados=buscar?lista.filter(function(r){return(r.provincia+' '+r.idZona+' '+r.idUnidad+' '+r.nombre+' '+r.municipio).toLowerCase().indexOf(buscar)!==-1;}):lista;
+  if(cnt)cnt.textContent=filtrados.length;
+  if(filtrados.length===0){el.innerHTML='<p style="text-align:center;color:#888;padding:15px">Sin infraestructuras</p>';return;}
+  var h='';
+  filtrados.slice(0,50).forEach(function(r){
+    h+='<div class="record-card infra"><div class="rc-title">'+(r.idUnidad||'--')+' — '+(r.nombre||'Sin nombre')+'</div>';
+    h+='<div class="rc-info">'+(r.municipio||'-')+' | '+(r.provincia||'-')+' | Zona: '+(r.idZona||'-')+'</div>';
+    h+='<div class="rc-actions"><button class="btn-small edit" onclick="editarInfra('+r.id+')">✏️</button><button class="btn-small delete" onclick="eliminarInfra('+r.id+')">🗑️</button></div></div>';
+  });
+  if(filtrados.length>50)h+='<p style="text-align:center;color:#888;padding:10px">Mostrando 50 de '+filtrados.length+'</p>';
+  el.innerHTML=h;
+}
+function editarInfra(id){
+  var lista=getInfras(),r=lista.find(function(x){return x.id===id;});
+  if(!r)return;editandoInfraId=id;
+  INFRA_CAMPOS_BASE.forEach(function(c){document.getElementById(c.id).value=r[c.key]||'';});
+  if(r.extras)camposExtraInf.forEach(function(c){var el=document.getElementById('inf-extra-'+c.replace(/\s/g,'_'));if(el)el.value=r.extras[c]||'';});
+  window.scrollTo(0,0);showToast('Editando infraestructura','info');
+}
+function eliminarInfra(id){
+  if(!confirm('¿Eliminar infraestructura?'))return;
+  guardarInfras(getInfras().filter(function(r){return r.id!==id;}));
+  cargarListaInfra();showToast('Eliminado','info');
+}
+function agregarCampoInfra(){
+  var nombre=prompt('Nombre del nuevo campo:');
+  if(!nombre||!nombre.trim())return;nombre=nombre.trim();
+  if(camposExtraInf.indexOf(nombre)!==-1){showToast('Campo ya existe','error');return;}
+  camposExtraInf.push(nombre);localStorage.setItem('rapca_campos_infra',JSON.stringify(camposExtraInf));renderCamposExtraInf();
+}
+function eliminarCampoInf(nombre){
+  if(!confirm('¿Eliminar campo "'+nombre+'"?'))return;
+  camposExtraInf=camposExtraInf.filter(function(c){return c!==nombre;});
+  localStorage.setItem('rapca_campos_infra',JSON.stringify(camposExtraInf));renderCamposExtraInf();
+}
+function renderCamposExtraInf(){
+  var el=document.getElementById('inf-campos-extra');if(!el)return;
+  var h='';
+  camposExtraInf.forEach(function(c){
+    var safeId='inf-extra-'+c.replace(/\s/g,'_');
+    h+='<div class="campo-extra"><div class="form-group"><label>'+c+'</label><input type="text" id="'+safeId+'"></div><button class="btn-remove" onclick="eliminarCampoInf(\''+c.replace(/'/g,"\\'")+'\')">✖</button></div>';
+  });
+  el.innerHTML=h;
+}
+
+// --- Excel Import/Export (Infraestructuras) ---
+function importarExcel(file){
+  if(!file)return;
+  if(typeof XLSX==='undefined'){showToast('Librería Excel no cargada','error');return;}
+  showLoading(true);
+  var reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      var wb=XLSX.read(e.target.result,{type:'array'});
+      var ws=wb.Sheets[wb.SheetNames[0]];
+      var datos=XLSX.utils.sheet_to_json(ws,{defval:''});
+      if(datos.length===0){showLoading(false);showToast('Excel vacío','error');return;}
+      var headerMap={};
+      INFRA_CAMPOS_BASE.forEach(function(c){headerMap[c.label.toUpperCase()]=c.key;});
+      var lista=getInfras();
+      var nuevos=0,actualizados=0;
+      datos.forEach(function(row){
+        var r={id:Date.now()+Math.floor(Math.random()*10000),extras:{}};
+        Object.keys(row).forEach(function(k){
+          var ku=k.toUpperCase().trim();
+          var mapped=headerMap[ku];
+          if(mapped){r[mapped]=String(row[k]).trim();}
+          else{r.extras[k.trim()]=String(row[k]).trim();if(camposExtraInf.indexOf(k.trim())===-1)camposExtraInf.push(k.trim());}
+        });
+        if(r.idUnidad){
+          var idx=lista.findIndex(function(x){return x.idUnidad===r.idUnidad;});
+          if(idx!==-1){var oldId=lista[idx].id;Object.assign(lista[idx],r);lista[idx].id=oldId;actualizados++;}
+          else{lista.push(r);nuevos++;}
+        }else{lista.push(r);nuevos++;}
+      });
+      guardarInfras(lista);
+      localStorage.setItem('rapca_campos_infra',JSON.stringify(camposExtraInf));
+      renderCamposExtraInf();cargarListaInfra();showLoading(false);
+      showToast(nuevos+' nuevas, '+actualizados+' actualizadas','success');
+    }catch(err){showLoading(false);showToast('Error: '+err.message,'error');console.error('Error importando Excel:',err);}
+  };
+  reader.readAsArrayBuffer(file);
+}
+function exportarExcel(){
+  if(typeof XLSX==='undefined'){showToast('Librería Excel no cargada','error');return;}
+  var lista=getInfras();
+  if(lista.length===0){showToast('Sin datos para exportar','info');return;}
+  var headers=INFRA_CAMPOS_BASE.map(function(c){return c.label;});
+  var allExtras={};
+  lista.forEach(function(r){if(r.extras)Object.keys(r.extras).forEach(function(k){allExtras[k]=true;});});
+  var extraKeys=Object.keys(allExtras);
+  headers=headers.concat(extraKeys);
+  var rows=lista.map(function(r){
+    var row={};
+    INFRA_CAMPOS_BASE.forEach(function(c){row[c.label]=r[c.key]||'';});
+    extraKeys.forEach(function(k){row[k]=(r.extras&&r.extras[k])||'';});
+    return row;
+  });
+  var ws=XLSX.utils.json_to_sheet(rows,{header:headers});
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Infraestructuras');
+  XLSX.writeFile(wb,'RAPCA_Infraestructuras.xlsx');
+  showToast('Exportado '+lista.length+' registros','success');
+}
