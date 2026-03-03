@@ -1397,39 +1397,49 @@ function iniciarSesion(){
   var pass=document.getElementById('login-password').value.trim();
   if(!email||!pass){mostrarErrorLogin('Email y contraseña requeridos');return;}
   var btn=document.getElementById('btnLogin');btn.textContent='Entrando...';btn.disabled=true;
-  // Intentar login local primero
-  var resultLocal=loginLocal(email,pass);
-  if(resultLocal.ok){
-    btn.textContent='Entrar';btn.disabled=false;
-    sesionActual={token:resultLocal.token,email:resultLocal.usuario.email,nombre:resultLocal.usuario.nombre,rol:resultLocal.usuario.rol,id:resultLocal.usuario.id};
-    localStorage.setItem('rapca_sesion',JSON.stringify(sesionActual));
-    ocultarLoginMostrarApp();
-    return;
-  }
-  // Si local falla, intentar servidor
-  fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'login',email:email,password:pass})})
-  .then(function(r){
-    if(!r.ok)throw new Error('HTTP '+r.status);
-    return r.json();
-  })
-  .then(function(data){
-    btn.textContent='Entrar';btn.disabled=false;
-    if(data.ok){
-      // Guardar usuario en local para futuros logins offline
-      var users=getUsuariosLocal();
-      if(!users.find(function(u){return u.email.toLowerCase()===email;})){
-        users.push({id:data.usuario.id,email:email,nombre:data.usuario.nombre,password:pass,rol:data.usuario.rol,activo:1});
+  // Servidor primero cuando hay conexión
+  if(isOnline){
+    fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'login',email:email,password:pass})})
+    .then(function(r){
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      return r.json();
+    })
+    .then(function(data){
+      btn.textContent='Entrar';btn.disabled=false;
+      if(data.ok){
+        // Guardar usuario en local para futuros logins offline
+        var users=getUsuariosLocal();
+        var existing=users.find(function(u){return u.email.toLowerCase()===email;});
+        if(existing){existing.id=data.usuario.id;existing.nombre=data.usuario.nombre;existing.password=pass;existing.rol=data.usuario.rol;existing.activo=1;}
+        else{users.push({id:data.usuario.id,email:email,nombre:data.usuario.nombre,password:pass,rol:data.usuario.rol,activo:1});}
         guardarUsuariosLocal(users);
-      }
-      sesionActual={token:data.token,email:data.usuario.email,nombre:data.usuario.nombre,rol:data.usuario.rol,id:data.usuario.id};
+        sesionActual={token:data.token,email:data.usuario.email,nombre:data.usuario.nombre,rol:data.usuario.rol,id:data.usuario.id};
+        localStorage.setItem('rapca_sesion',JSON.stringify(sesionActual));
+        ocultarLoginMostrarApp();
+        // Sincronizar lista de usuarios del servidor al local
+        sincronizarUsuariosDesdeServidor();
+      }else{mostrarErrorLogin(data.error||'Email o contraseña incorrectos');}
+    })
+    .catch(function(e){
+      // Sin servidor: intentar login local
+      btn.textContent='Entrar';btn.disabled=false;
+      var resultLocal=loginLocal(email,pass);
+      if(resultLocal.ok){
+        sesionActual={token:resultLocal.token,email:resultLocal.usuario.email,nombre:resultLocal.usuario.nombre,rol:resultLocal.usuario.rol,id:resultLocal.usuario.id};
+        localStorage.setItem('rapca_sesion',JSON.stringify(sesionActual));
+        ocultarLoginMostrarApp();
+      }else{mostrarErrorLogin('Sin conexión al servidor y cuenta no encontrada en este dispositivo');}
+    });
+  }else{
+    // Sin conexión: login local
+    var resultLocal=loginLocal(email,pass);
+    btn.textContent='Entrar';btn.disabled=false;
+    if(resultLocal.ok){
+      sesionActual={token:resultLocal.token,email:resultLocal.usuario.email,nombre:resultLocal.usuario.nombre,rol:resultLocal.usuario.rol,id:resultLocal.usuario.id};
       localStorage.setItem('rapca_sesion',JSON.stringify(sesionActual));
       ocultarLoginMostrarApp();
-    }else{mostrarErrorLogin(data.error||'Email o contraseña incorrectos');}
-  })
-  .catch(function(e){
-    btn.textContent='Entrar';btn.disabled=false;
-    mostrarErrorLogin('Cuenta no encontrada en este dispositivo y sin conexión al servidor');
-  });
+    }else{mostrarErrorLogin('Sin conexión. Cuenta no encontrada en este dispositivo');}
+  }
 }
 function mostrarErrorLogin(msg){var el=document.getElementById('loginError');el.textContent=msg;el.classList.add('show');}
 function validarSesion(){
@@ -1473,27 +1483,41 @@ function crearUsuario(){
   var pass=document.getElementById('admin-nuevo-pass').value.trim();
   var rol=document.getElementById('admin-nuevo-rol').value;
   if(!email||!nombre||!pass){showToast('Todos los campos son obligatorios','error');return;}
-  // Guardar siempre en local
-  var localResult=crearUsuarioLocal(email,nombre,pass,rol);
-  if(!localResult.ok){showToast(localResult.error||'Error','error');return;}
-  document.getElementById('admin-nuevo-email').value='';document.getElementById('admin-nuevo-nombre').value='';document.getElementById('admin-nuevo-pass').value='';
-  cargarListaUsuarios();
-  // Intentar sincronizar con servidor
   if(isOnline){
+    // Servidor primero
     fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'crear_usuario',token:sesionActual.token,nuevo_email:email,nuevo_nombre:nombre,nuevo_password:pass,nuevo_rol:rol})})
     .then(function(r){return r.json();})
     .then(function(data){
-      if(data.ok){showToast('Usuario creado y sincronizado con servidor','success');}
-      else{showToast('Usuario creado (solo local). Servidor: '+(data.error||'error'),'warning');}
+      if(data.ok){
+        // Guardar en local con ID del servidor
+        var users=getUsuariosLocal();
+        if(!users.find(function(u){return u.email.toLowerCase()===email.toLowerCase();})){
+          users.push({id:data.id,email:email.toLowerCase(),nombre:nombre,password:pass,rol:rol||'operador',activo:1});
+          guardarUsuariosLocal(users);
+        }
+        document.getElementById('admin-nuevo-email').value='';document.getElementById('admin-nuevo-nombre').value='';document.getElementById('admin-nuevo-pass').value='';
+        cargarListaUsuarios();
+        showToast('Usuario creado en servidor','success');
+      }else{showToast(data.error||'Error del servidor','error');}
     })
-    .catch(function(){showToast('Usuario creado (solo en este dispositivo)','warning');});
+    .catch(function(){
+      // Fallback local si servidor falla
+      var localResult=crearUsuarioLocal(email,nombre,pass,rol);
+      if(!localResult.ok){showToast(localResult.error||'Error','error');return;}
+      document.getElementById('admin-nuevo-email').value='';document.getElementById('admin-nuevo-nombre').value='';document.getElementById('admin-nuevo-pass').value='';
+      cargarListaUsuarios();
+      showToast('Usuario creado solo en este dispositivo (sin conexión al servidor)','warning');
+    });
   }else{
-    showToast('Usuario creado (solo en este dispositivo, sin conexión)','warning');
+    var localResult=crearUsuarioLocal(email,nombre,pass,rol);
+    if(!localResult.ok){showToast(localResult.error||'Error','error');return;}
+    document.getElementById('admin-nuevo-email').value='';document.getElementById('admin-nuevo-nombre').value='';document.getElementById('admin-nuevo-pass').value='';
+    cargarListaUsuarios();
+    showToast('Usuario creado solo en este dispositivo (sin conexión)','warning');
   }
 }
 function cargarListaUsuarios(){
   if(!sesionActual||sesionActual.rol!=='admin')return;
-  // Intentar del servidor, si falla usar datos locales
   function renderUsuarios(usuarios){
     var el=document.getElementById('listaUsuarios');if(!el)return;
     var filtro=document.getElementById('admin-filtro-email');
@@ -1518,32 +1542,88 @@ function cargarListaUsuarios(){
   if(isOnline){
     fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'listar_usuarios',token:sesionActual.token})})
     .then(function(r){return r.json();})
-    .then(function(data){if(data.ok)renderUsuarios(data.usuarios);else renderUsuarios(getUsuariosLocal());})
+    .then(function(data){
+      if(data.ok){
+        // Actualizar caché local con datos del servidor
+        guardarUsuariosLocal(data.usuarios.map(function(u){
+          // Mantener password local si existe (el servidor no la devuelve)
+          var local=getUsuariosLocal().find(function(l){return l.email===u.email;});
+          return{id:u.id,email:u.email,nombre:u.nombre,rol:u.rol,activo:u.activo,password:local?local.password:''};
+        }));
+        renderUsuarios(data.usuarios);
+      }else{renderUsuarios(getUsuariosLocal());}
+    })
     .catch(function(){renderUsuarios(getUsuariosLocal());});
   }else{renderUsuarios(getUsuariosLocal());}
 }
 function toggleUsuario(id){
-  // Toggle local
-  var users=getUsuariosLocal();
-  users.forEach(function(u){if(u.id===id)u.activo=u.activo?0:1;});
-  guardarUsuariosLocal(users);
-  cargarListaUsuarios();showToast('Estado cambiado','success');
-  if(isOnline)fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'toggle_usuario',token:sesionActual.token,usuario_id:id})}).catch(function(){});
+  if(isOnline){
+    fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'toggle_usuario',token:sesionActual.token,usuario_id:id})})
+    .then(function(r){return r.json();})
+    .then(function(data){
+      if(data.ok){showToast('Estado cambiado en servidor','success');cargarListaUsuarios();}
+      else{showToast(data.error||'Error','error');}
+    })
+    .catch(function(){
+      // Fallback local
+      var users=getUsuariosLocal();
+      users.forEach(function(u){if(u.id===id)u.activo=u.activo?0:1;});
+      guardarUsuariosLocal(users);
+      cargarListaUsuarios();showToast('Estado cambiado (solo local)','warning');
+    });
+  }else{
+    var users=getUsuariosLocal();
+    users.forEach(function(u){if(u.id===id)u.activo=u.activo?0:1;});
+    guardarUsuariosLocal(users);
+    cargarListaUsuarios();showToast('Estado cambiado (solo local, sin conexión)','warning');
+  }
 }
 function cambiarPasswordUsuario(id){
   var nueva=prompt('Nueva contraseña:');
   if(!nueva||!nueva.trim())return;
-  var users=getUsuariosLocal();
-  users.forEach(function(u){if(u.id===id)u.password=nueva.trim();});
-  guardarUsuariosLocal(users);
-  showToast('Contraseña cambiada','success');
-  if(isOnline)fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'cambiar_password',token:sesionActual.token,usuario_id:id,nueva_password:nueva.trim()})}).catch(function(){});
+  if(isOnline){
+    fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'cambiar_password',token:sesionActual.token,usuario_id:id,nueva_password:nueva.trim()})})
+    .then(function(r){return r.json();})
+    .then(function(data){
+      if(data.ok){
+        var users=getUsuariosLocal();
+        users.forEach(function(u){if(u.id===id)u.password=nueva.trim();});
+        guardarUsuariosLocal(users);
+        showToast('Contraseña cambiada en servidor','success');
+      }else{showToast(data.error||'Error','error');}
+    })
+    .catch(function(){
+      var users=getUsuariosLocal();
+      users.forEach(function(u){if(u.id===id)u.password=nueva.trim();});
+      guardarUsuariosLocal(users);
+      showToast('Contraseña cambiada (solo local)','warning');
+    });
+  }else{
+    var users=getUsuariosLocal();
+    users.forEach(function(u){if(u.id===id)u.password=nueva.trim();});
+    guardarUsuariosLocal(users);
+    showToast('Contraseña cambiada (solo local, sin conexión)','warning');
+  }
 }
 function eliminarUsuario(id,email){
   if(!confirm('¿Eliminar usuario '+email+'? Se perderán sus sesiones.'))return;
-  guardarUsuariosLocal(getUsuariosLocal().filter(function(u){return u.id!==id;}));
-  cargarListaUsuarios();showToast('Usuario eliminado','success');
-  if(isOnline)fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'eliminar_usuario',token:sesionActual.token,usuario_id:id})}).catch(function(){});
+  if(isOnline){
+    fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'eliminar_usuario',token:sesionActual.token,usuario_id:id})})
+    .then(function(r){return r.json();})
+    .then(function(data){
+      if(data.ok){
+        guardarUsuariosLocal(getUsuariosLocal().filter(function(u){return u.id!==id;}));
+        cargarListaUsuarios();showToast('Usuario eliminado del servidor','success');
+      }else{showToast(data.error||'Error','error');}
+    })
+    .catch(function(){
+      guardarUsuariosLocal(getUsuariosLocal().filter(function(u){return u.id!==id;}));
+      cargarListaUsuarios();showToast('Usuario eliminado (solo local)','warning');
+    });
+  }else{
+    guardarUsuariosLocal(getUsuariosLocal().filter(function(u){return u.id!==id;}));
+    cargarListaUsuarios();showToast('Usuario eliminado (solo local, sin conexión)','warning');
+  }
 }
 // --- Registros del Servidor (Admin) ---
 function cargarRegistrosServidor(){
@@ -1577,9 +1657,31 @@ function sincronizarInfraServidor(infra){
 
 // === SINCRONIZACIÓN BIDIRECCIONAL (servidor ↔ local) ===
 // Se ejecuta tras login exitoso para recuperar datos del servidor
+// --- Sincronizar lista de usuarios del servidor al local (tras login) ---
+function sincronizarUsuariosDesdeServidor(){
+  if(!sesionActual||!sesionActual.token||!isOnline)return;
+  if(sesionActual.rol!=='admin')return;
+  fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'listar_usuarios',token:sesionActual.token})})
+  .then(function(r){return r.json();})
+  .then(function(data){
+    if(!data.ok)return;
+    var localUsers=getUsuariosLocal();
+    var serverUsers=data.usuarios;
+    // Actualizar local con datos del servidor (preservar passwords locales)
+    var merged=serverUsers.map(function(su){
+      var local=localUsers.find(function(l){return l.email.toLowerCase()===su.email.toLowerCase();});
+      return{id:su.id,email:su.email,nombre:su.nombre,rol:su.rol,activo:su.activo,password:local?local.password:''};
+    });
+    guardarUsuariosLocal(merged);
+    console.log('Usuarios sincronizados del servidor: '+serverUsers.length);
+  })
+  .catch(function(e){console.warn('No se pudieron sincronizar usuarios:',e);});
+}
+
 function sincronizarDesdeServidor(){
   if(!sesionActual||!sesionActual.token||!isOnline)return;
   console.log('Iniciando sincronización desde servidor...');
+  sincronizarUsuariosDesdeServidor();
   sincronizarRegistrosDesdeServidor();
   sincronizarInfrasDesdeServidor();
   // También subir registros locales no sincronizados
