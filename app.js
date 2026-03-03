@@ -1531,7 +1531,7 @@ function ejecutarBusqueda(){
   var h='';
   resultados.slice(0,30).forEach(function(r){
     var icon=r.tipo==='infra'?'infra':r.tipo==='registro'?'registro':'operador';
-    var emoji=r.tipo==='infra'?'🏗️':r.tipo==='registro'?(r.regTipo==='VP'?'🔍':'📊'):'👤';
+    var emoji=r.tipo==='infra'?'🌳':r.tipo==='registro'?(r.regTipo==='VP'?'🔍':'📊'):'👤';
     h+='<div class="search-result-item" onclick="irAResultado(\''+r.tipo+'\','+JSON.stringify(r.id||'').replace(/"/g,'&quot;')+')">';
     h+='<div class="sr-icon '+icon+'">'+emoji+'</div>';
     h+='<div><div class="sr-title">'+r.titulo+'</div><div class="sr-sub">'+r.sub+'</div></div></div>';
