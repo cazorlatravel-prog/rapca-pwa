@@ -751,7 +751,10 @@ function iniciarSesion(){
   if(!email||!pass){mostrarErrorLogin('Email y contraseña requeridos');return;}
   var btn=document.getElementById('btnLogin');btn.textContent='Entrando...';btn.disabled=true;
   fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'login',email:email,password:pass})})
-  .then(function(r){return r.json();})
+  .then(function(r){
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    return r.json();
+  })
   .then(function(data){
     btn.textContent='Entrar';btn.disabled=false;
     if(data.ok){
@@ -785,7 +788,7 @@ function validarSesion(){
   if(sesionActual.token&&sesionActual.token.indexOf('local_')===0){ocultarLoginMostrarApp();return;}
   if(!isOnline){ocultarLoginMostrarApp();return;}
   fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'validar',token:sesionActual.token})})
-  .then(function(r){return r.json();})
+  .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
   .then(function(data){
     if(data.ok){sesionActual.nombre=data.usuario.nombre;sesionActual.rol=data.usuario.rol;localStorage.setItem('rapca_sesion',JSON.stringify(sesionActual));ocultarLoginMostrarApp();}
     else{localStorage.removeItem('rapca_sesion');sesionActual=null;document.getElementById('loginOverlay').classList.remove('hidden');}
