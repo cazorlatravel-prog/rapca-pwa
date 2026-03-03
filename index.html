@@ -10,6 +10,9 @@
 <meta name="theme-color" content="#1a3d2e">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect fill='%231a3d2e' width='180' height='180' rx='40'/%3E%3Ctext x='90' y='125' text-anchor='middle' font-size='100'%3E🌿%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
 <title>RAPCA Campo</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -20,7 +23,7 @@ body{font-family:-apple-system,sans-serif;background:#f5f5f0;color:#1a3d2e;min-h
 .sync-status.online{background:#27ae60}
 .sync-status.offline{background:#e74c3c}
 .nav{display:flex;background:#fff;border-bottom:1px solid #ddd}
-.nav-btn{flex:1;padding:12px;border:none;background:#fff;font-size:.9rem;cursor:pointer;border-bottom:3px solid transparent}
+.nav-btn{flex:1;padding:10px 4px;border:none;background:#fff;font-size:.78rem;cursor:pointer;border-bottom:3px solid transparent}
 .nav-btn.active{border-bottom-color:#5b8c5a;color:#5b8c5a;font-weight:bold}
 .page{display:none;padding:15px;padding-bottom:100px}
 .page.active{display:block}
@@ -47,8 +50,10 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .menu-btn.vp{border-left:5px solid #88d8b0}
 .menu-btn.ev{border-left:5px solid #fd9853}
 .menu-btn.panel{border-left:5px solid #5b8c5a}
+.menu-btn.mapa{border-left:5px solid #3498db}
+.menu-btn.tools{border-left:5px solid #9b59b6}
 .pending-badge{background:#e74c3c;color:#fff;padding:3px 10px;border-radius:12px;font-size:.85rem;margin-left:8px}
-.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:14px 28px;border-radius:10px;color:#fff;display:none;z-index:1000;max-width:90%;text-align:center;font-weight:bold}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:14px 28px;border-radius:10px;color:#fff;display:none;z-index:5000;max-width:90%;text-align:center;font-weight:bold}
 .toast.show{display:block}
 .toast.success{background:#27ae60}
 .toast.error{background:#e74c3c}
@@ -63,6 +68,8 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .record-item .btn-small.pdf{background:#9b59b6;color:#fff}
 .record-item .btn-small.edit{background:#3498db;color:#fff}
 .record-item .btn-small.delete{background:#e74c3c;color:#fff}
+.record-item .btn-small.compare{background:#2ecc71;color:#fff}
+.record-item .btn-small.zip{background:#f39c12;color:#fff}
 .loading{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,.95);display:none;justify-content:center;align-items:center;z-index:2000}
 .loading.show{display:flex}
 .spinner{width:50px;height:50px;border:5px solid #eee;border-top-color:#5b8c5a;border-radius:50%;animation:spin 1s linear infinite}
@@ -96,6 +103,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .resumen-matorral .valor-item .numero{font-size:1.3rem;font-weight:bold;color:#5b8c5a}
 .fotos-lista{background:#f0f0f0;border-radius:8px;padding:10px;margin-top:10px;min-height:40px}
 .fotos-lista .foto-tag{display:inline-block;background:#5b8c5a;color:#fff;padding:4px 10px;border-radius:15px;margin:3px;font-size:.85rem}
+/* Camera modal */
 .camera-modal{position:fixed;top:0;left:0;right:0;bottom:0;background:#000;z-index:3000;display:none;flex-direction:column}
 .camera-modal.show{display:flex}
 .camera-modal .camera-container{flex:1;position:relative;overflow:hidden}
@@ -107,46 +115,188 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .camera-modal .overlay-map .no-map{width:100%;height:100%;background:#e0e0e0;display:flex;align-items:center;justify-content:center;font-size:.8rem;color:#666}
 .camera-modal .overlay-info{position:absolute;bottom:10px;right:10px;background:rgba(0,0,0,.85);color:#fff;padding:8px 12px;border-radius:8px;text-align:right;font-size:.85rem;line-height:1.4}
 .camera-modal .overlay-info .codigo{font-weight:bold;font-size:1.1rem;color:#88d8b0}
-.camera-modal .camera-controls{height:100px;background:#1a3d2e;display:flex;align-items:center;justify-content:space-around;padding:10px;flex-shrink:0}
+.camera-modal .camera-controls{height:auto;min-height:100px;background:#1a3d2e;display:flex;align-items:center;justify-content:space-around;padding:10px;flex-shrink:0;flex-wrap:wrap;gap:8px}
 .camera-modal .btn-capture{width:70px;height:70px;border-radius:50%;background:#fff;border:5px solid #5b8c5a;cursor:pointer}
 .camera-modal .btn-close-cam{background:#e74c3c;color:#fff;border:none;padding:12px 24px;border-radius:8px;cursor:pointer;font-size:1rem;font-weight:bold}
 .camera-modal .camera-info{color:#fff;font-size:.9rem;text-align:center;max-width:120px}
+/* Ghost overlay */
+#ghostOverlay{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:none;pointer-events:none;z-index:5}
+#ghostOverlay.active{display:block}
+.ghost-controls{position:absolute;top:10px;right:10px;z-index:10;display:flex;align-items:center;gap:6px;pointer-events:auto}
+.ghost-controls button{background:rgba(0,0,0,.7);color:#fff;border:2px solid #fff;border-radius:8px;padding:6px 10px;font-size:.85rem;cursor:pointer}
+.ghost-controls button.active{background:rgba(139,92,246,.8);border-color:#a78bfa}
+.ghost-controls input[type=range]{width:80px;accent-color:#a78bfa}
+/* Preview modal */
+.preview-modal{position:fixed;top:0;left:0;right:0;bottom:0;background:#000;z-index:3500;display:none;flex-direction:column}
+.preview-modal.show{display:flex}
+.preview-modal .preview-container{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:10px}
+.preview-modal canvas{max-width:100%;max-height:100%;object-fit:contain}
+.preview-modal .preview-actions{background:#1a3d2e;padding:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.preview-modal .preview-actions button{padding:14px 20px;border:none;border-radius:10px;font-size:1rem;font-weight:bold;cursor:pointer}
+.btn-accept{background:#27ae60;color:#fff}
+.btn-retake{background:#f39c12;color:#fff}
+.btn-annotate{background:#9b59b6;color:#fff}
+/* Annotation toolbar */
+.annotation-toolbar{background:rgba(0,0,0,.85);padding:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center}
+.annotation-toolbar.hidden{display:none}
+.annotation-toolbar input[type=text]{flex:1;min-width:150px;padding:8px;border-radius:6px;border:none;font-size:.9rem}
+.annotation-toolbar input[type=range]{width:80px;accent-color:#ef4444}
+.annotation-toolbar button{padding:8px 14px;border:none;border-radius:6px;cursor:pointer;font-size:.85rem;font-weight:bold}
+.annotation-toolbar .btn-clear-ann{background:#e74c3c;color:#fff}
+.annotation-toolbar label{color:#fff;font-size:.8rem}
+.preview-canvas-active{cursor:crosshair}
+/* Comparator modal */
+.comparator-modal{position:fixed;top:0;left:0;right:0;bottom:0;background:#000;z-index:4000;display:none;flex-direction:column}
+.comparator-modal.show{display:flex}
+.comparator-header{background:#1a3d2e;padding:12px;display:flex;gap:8px;align-items:center;justify-content:center}
+.comparator-header button{padding:10px 16px;border:none;border-radius:8px;font-size:.9rem;font-weight:bold;cursor:pointer;background:#fff;color:#1a3d2e}
+.comparator-header button.active{background:#5b8c5a;color:#fff}
+.comparator-header .btn-close-comp{background:#e74c3c;color:#fff}
+.comparator-container{flex:1;position:relative;overflow:hidden}
+/* Slider mode */
+.comp-slider-wrap{position:relative;width:100%;height:100%;overflow:hidden}
+.comp-slider-wrap img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain}
+.comp-slider-wrap .comp-img-after{clip-path:inset(0 0 0 50%)}
+.comp-slider-handle{position:absolute;top:0;bottom:0;left:50%;width:4px;background:#fff;cursor:ew-resize;z-index:10;box-shadow:0 0 8px rgba(0,0,0,.5)}
+.comp-slider-handle::after{content:'';position:absolute;top:50%;left:-18px;width:40px;height:40px;background:#fff;border-radius:50%;transform:translateY(-50%);box-shadow:0 2px 8px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+/* Side-by-side mode */
+.comp-sidebyside{display:grid;grid-template-columns:1fr 1fr;gap:4px;height:100%;padding:4px}
+.comp-sidebyside img{width:100%;height:100%;object-fit:contain;border-radius:6px}
+.comp-sidebyside .comp-label{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.7);color:#fff;padding:4px 10px;border-radius:6px;font-size:.75rem}
+.comp-photo-wrap{position:relative}
+/* Sync progress */
+.sync-modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.8);z-index:4500;display:none;align-items:center;justify-content:center}
+.sync-modal.show{display:flex}
+.sync-content{background:#fff;border-radius:12px;padding:25px;width:90%;max-width:400px;text-align:center}
+.sync-content h3{margin-bottom:15px;color:#1a3d2e}
+.progress-bar{background:#e0e0e0;border-radius:10px;height:20px;overflow:hidden;margin-bottom:10px}
+.progress-fill{background:linear-gradient(90deg,#5b8c5a,#88d8b0);height:100%;width:0;border-radius:10px;transition:width .3s}
+.sync-detail{font-size:.85rem;color:#666;margin-top:8px}
+/* Map page */
+#leafletMap{height:calc(100vh - 230px);border-radius:10px;overflow:hidden;min-height:300px}
+.map-controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.map-controls select,.map-controls button{padding:8px 12px;border-radius:8px;border:2px solid #ddd;font-size:.85rem;cursor:pointer}
+.map-controls button{background:#5b8c5a;color:#fff;border-color:#5b8c5a;font-weight:bold}
+.kml-layers-list{margin-top:10px;max-height:150px;overflow-y:auto}
+.kml-layer-item{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:#f9f9f9;border-radius:6px;margin-bottom:4px;font-size:.85rem}
+.kml-layer-item button{background:#e74c3c;color:#fff;border:none;padding:4px 8px;border-radius:4px;font-size:.75rem;cursor:pointer}
+/* Cloud status badge */
+.cloud-badge{display:inline-block;padding:2px 6px;border-radius:4px;font-size:.7rem;font-weight:bold;margin-left:4px}
+.cloud-badge.uploaded{background:#d4edda;color:#155724}
+.cloud-badge.pending{background:#fff3cd;color:#856404}
+.cloud-badge.offline{background:#f8d7da;color:#721c24}
+/* Tools section in menu */
+.tools-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.tool-btn{display:flex;flex-direction:column;align-items:center;gap:6px;padding:15px 10px;background:#fff;border:2px solid #eee;border-radius:10px;cursor:pointer;font-size:.85rem;font-weight:bold;color:#1a3d2e;text-align:center}
+.tool-btn:active{background:#f0f0f0}
+.tool-btn .tool-icon{font-size:1.8rem}
 </style>
 </head>
 <body>
 <div class="header"><h1>🌿 RAPCA Campo</h1><span class="sync-status" id="syncStatus">...</span></div>
-<nav class="nav"><button class="nav-btn active" onclick="showPage('menu')">Menú</button><button class="nav-btn" onclick="showPage('vp')">VP</button><button class="nav-btn" onclick="showPage('ev')">EV</button><button class="nav-btn" onclick="showPage('panel')">Panel<span id="pendingBadge" class="pending-badge" style="display:none">0</span></button></nav>
+<nav class="nav">
+<button class="nav-btn active" onclick="showPage('menu')">Menu</button>
+<button class="nav-btn" onclick="showPage('vp')">VP</button>
+<button class="nav-btn" onclick="showPage('ev')">EV</button>
+<button class="nav-btn" onclick="showPage('mapa')">Mapa</button>
+<button class="nav-btn" onclick="showPage('panel')">Panel<span id="pendingBadge" class="pending-badge" style="display:none">0</span></button>
+</nav>
 
-<div id="page-menu" class="page active"><div style="max-width:400px;margin:20px auto"><button id="installBtn" class="menu-btn" style="display:none;background:#27ae60;color:#fff;border-left:5px solid #1e8449" onclick="instalarApp()">📲 Instalar App</button><button class="menu-btn vp" onclick="showPage('vp')">🔍 VP - Visitas Previas</button><button class="menu-btn ev" onclick="showPage('ev')">📊 EV - Evaluación</button><button class="menu-btn panel" onclick="showPage('panel')">📋 Panel de Registros</button><div class="card" style="margin-top:25px;text-align:center"><p style="margin-bottom:10px;color:#666">Pendientes: <strong id="pendingCount">0</strong></p><button class="btn btn-secondary" onclick="syncPending()">🔄 Sincronizar</button><button class="btn btn-exit" onclick="salirApp()">🚪 Guardar y Salir</button></div></div></div>
+<!-- MENU -->
+<div id="page-menu" class="page active"><div style="max-width:400px;margin:20px auto">
+<button id="installBtn" class="menu-btn" style="display:none;background:#27ae60;color:#fff;border-left:5px solid #1e8449" onclick="instalarApp()">📲 Instalar App</button>
+<button class="menu-btn vp" onclick="showPage('vp')">🔍 VP - Visitas Previas</button>
+<button class="menu-btn ev" onclick="showPage('ev')">📊 EV - Evaluacion</button>
+<button class="menu-btn mapa" onclick="showPage('mapa')">🗺️ Mapa Interactivo</button>
+<button class="menu-btn panel" onclick="showPage('panel')">📋 Panel de Registros</button>
+<div class="card" style="margin-top:15px">
+<div class="card-title">🛠️ Herramientas</div>
+<div class="tools-grid">
+<button class="tool-btn" onclick="abrirComparadorSeleccion()"><span class="tool-icon">🔄</span>Comparador</button>
+<button class="tool-btn" onclick="descargarZIP()"><span class="tool-icon">📦</span>Descargar ZIP</button>
+<button class="tool-btn" onclick="document.getElementById('kmlInput').click()"><span class="tool-icon">📁</span>Importar KML</button>
+<button class="tool-btn" onclick="exportarTodosPDF()"><span class="tool-icon">📄</span>Exportar PDF</button>
+</div>
+</div>
+<div class="card" style="margin-top:10px;text-align:center">
+<p style="margin-bottom:10px;color:#666">Pendientes: <strong id="pendingCount">0</strong> | Fotos nube: <span id="cloudPendingCount">0</span></p>
+<button class="btn btn-secondary" onclick="syncPending()">🔄 Sincronizar Datos</button>
+<button class="btn" style="background:#3498db;color:#fff" onclick="sincronizarFotosCloud()">☁️ Subir Fotos a Nube</button>
+<button class="btn btn-exit" onclick="salirApp()">🚪 Guardar y Salir</button>
+</div>
+</div></div>
 
+<!-- VP -->
 <div id="page-vp" class="page">
-<div class="card"><div class="card-title">📍 Identificación</div><div class="form-group"><label>Fecha</label><input type="date" id="vp-fecha"></div><div class="form-row"><div class="form-group"><label>ID Unidad *</label><input type="text" id="vp-unidad" placeholder="23AJE01" oninput="this.value=this.value.toUpperCase();actualizarZonaDesdeUnidad('vp')"></div><div class="form-group"><label>ID Zona (auto)</label><input type="text" id="vp-zona" readonly style="background:#e9e9e9;color:#666"></div></div></div>
+<div class="card"><div class="card-title">📍 Identificacion</div><div class="form-group"><label>Fecha</label><input type="date" id="vp-fecha"></div><div class="form-row"><div class="form-group"><label>ID Unidad *</label><input type="text" id="vp-unidad" placeholder="23AJE01" oninput="this.value=this.value.toUpperCase();actualizarZonaDesdeUnidad('vp')"></div><div class="form-group"><label>ID Zona (auto)</label><input type="text" id="vp-zona" readonly style="background:#e9e9e9;color:#666"></div></div></div>
 <div class="card"><div class="card-title">🐄 Grados de Pastoreo</div><div class="form-row-3"><div class="form-group"><label>Punto 1</label><select id="vp-past1"><option value="">--</option><option>NP</option><option>PL</option><option>PM</option><option>PI</option><option>PMI</option></select></div><div class="form-group"><label>Punto 2</label><select id="vp-past2"><option value="">--</option><option>NP</option><option>PL</option><option>PM</option><option>PI</option><option>PMI</option></select></div><div class="form-group"><label>Punto 3</label><select id="vp-past3"><option value="">--</option><option>NP</option><option>PL</option><option>PM</option><option>PI</option><option>PMI</option></select></div></div></div>
-<div class="card"><div class="card-title">👁️ Observación Estado Pastoreo</div><div class="form-row-3"><div class="form-group"><label>Señal Paso</label><select id="vp-senal"><option value="">--</option><option>A</option><option>B</option><option>M</option><option>N</option></select></div><div class="form-group"><label>Veredas</label><select id="vp-veredas"><option value="">--</option><option>A</option><option>B</option><option>M</option><option>N</option></select></div><div class="form-group"><label>Cagarrutas</label><select id="vp-cagarrutas"><option value="">--</option><option>A</option><option>B</option><option>M</option><option>N</option></select></div></div></div>
-<div class="card"><div class="card-title">📷 Fotos</div><p style="font-size:.85rem;color:#666;margin-bottom:10px">Fotos varias (ilimitadas)</p><button class="btn-camera vp" onclick="abrirCamara('VP','general')">📷 Añadir Foto VP</button><div class="fotos-lista" id="vp-fotos-lista"></div><input type="hidden" id="vp-fotos"><p style="font-size:.85rem;color:#666;margin:15px 0 10px">Fotos Comparativas</p><div class="form-row"><div class="form-group"><label>Waypoint 1</label><button class="btn-camera vp" onclick="abrirCamara('VP','W1')" style="width:100%">📷 W1</button><div class="fotos-lista" id="vp-fc1-lista"></div><input type="hidden" id="vp-fc1"></div><div class="form-group"><label>Waypoint 2</label><button class="btn-camera vp" onclick="abrirCamara('VP','W2')" style="width:100%">📷 W2</button><div class="fotos-lista" id="vp-fc2-lista"></div><input type="hidden" id="vp-fc2"></div></div></div>
+<div class="card"><div class="card-title">👁️ Observacion Estado Pastoreo</div><div class="form-row-3"><div class="form-group"><label>Senal Paso</label><select id="vp-senal"><option value="">--</option><option>A</option><option>B</option><option>M</option><option>N</option></select></div><div class="form-group"><label>Veredas</label><select id="vp-veredas"><option value="">--</option><option>A</option><option>B</option><option>M</option><option>N</option></select></div><div class="form-group"><label>Cagarrutas</label><select id="vp-cagarrutas"><option value="">--</option><option>A</option><option>B</option><option>M</option><option>N</option></select></div></div></div>
+<div class="card"><div class="card-title">📷 Fotos</div><p style="font-size:.85rem;color:#666;margin-bottom:10px">Fotos varias (ilimitadas)</p><button class="btn-camera vp" onclick="abrirCamara('VP','general')">📷 Anadir Foto VP</button><div class="fotos-lista" id="vp-fotos-lista"></div><input type="hidden" id="vp-fotos"><p style="font-size:.85rem;color:#666;margin:15px 0 10px">Fotos Comparativas</p><div class="form-row"><div class="form-group"><label>Waypoint 1</label><button class="btn-camera vp" onclick="abrirCamara('VP','W1')" style="width:100%">📷 W1</button><div class="fotos-lista" id="vp-fc1-lista"></div><input type="hidden" id="vp-fc1"></div><div class="form-group"><label>Waypoint 2</label><button class="btn-camera vp" onclick="abrirCamara('VP','W2')" style="width:100%">📷 W2</button><div class="fotos-lista" id="vp-fc2-lista"></div><input type="hidden" id="vp-fc2"></div></div></div>
 <div class="card"><div class="card-title">📝 Observaciones</div><textarea id="vp-obs" rows="3" placeholder="Notas..."></textarea></div>
 <div class="card"><button class="btn btn-vp" onclick="guardarVP()">💾 Guardar VP</button></div>
 </div>
 
+<!-- EV -->
 <div id="page-ev" class="page">
-<div class="card"><div class="card-title">📍 Identificación</div><div class="form-group"><label>Fecha</label><input type="date" id="ev-fecha"></div><div class="form-row"><div class="form-group"><label>ID Unidad *</label><input type="text" id="ev-unidad" placeholder="23AJE01" oninput="this.value=this.value.toUpperCase();actualizarZonaDesdeUnidad('ev')"></div><div class="form-group"><label>ID Zona (auto)</label><input type="text" id="ev-zona" readonly style="background:#e9e9e9;color:#666"></div></div><div class="form-group"><label>Transecto</label><div class="transecto-btns"><button type="button" class="transecto-btn active" onclick="setTransecto(1)">T1</button><button type="button" class="transecto-btn" onclick="setTransecto(2)">T2</button><button type="button" class="transecto-btn" onclick="setTransecto(3)">T3</button></div></div></div>
+<div class="card"><div class="card-title">📍 Identificacion</div><div class="form-group"><label>Fecha</label><input type="date" id="ev-fecha"></div><div class="form-row"><div class="form-group"><label>ID Unidad *</label><input type="text" id="ev-unidad" placeholder="23AJE01" oninput="this.value=this.value.toUpperCase();actualizarZonaDesdeUnidad('ev')"></div><div class="form-group"><label>ID Zona (auto)</label><input type="text" id="ev-zona" readonly style="background:#e9e9e9;color:#666"></div></div><div class="form-group"><label>Transecto</label><div class="transecto-btns"><button type="button" class="transecto-btn active" onclick="setTransecto(1)">T1</button><button type="button" class="transecto-btn" onclick="setTransecto(2)">T2</button><button type="button" class="transecto-btn" onclick="setTransecto(3)">T3</button></div></div></div>
 <div class="card"><div class="card-title" onclick="toggleSection('ev-plantas-section')"><span>🌱 Plantas</span><div><span id="contadorPlantas" style="background:#5b8c5a;color:#fff;padding:2px 8px;border-radius:10px;font-size:.8rem">0</span> <span id="mediaPlantas" style="background:#3498db;color:#fff;padding:2px 8px;border-radius:10px;font-size:.8rem">x̄ -</span></div></div><div class="section-content open" id="ev-plantas-section"></div></div>
 <div class="card"><div class="card-title" onclick="toggleSection('ev-palatables-section')"><span>🌿 Palatables</span><span id="mediaPalatables" style="background:#fd9853;color:#fff;padding:2px 8px;border-radius:10px;font-size:.8rem">x̄ -</span></div><div class="section-content open" id="ev-palatables-section"></div></div>
 <div class="card"><div class="card-title">🐄 Pastoreo</div><div class="form-row-3"><div class="form-group"><label>Punto 1</label><select id="ev-past1"><option value="">--</option><option>NP</option><option>PL</option><option>PM</option><option>PI</option><option>PMI</option></select></div><div class="form-group"><label>Punto 2</label><select id="ev-past2"><option value="">--</option><option>NP</option><option>PL</option><option>PM</option><option>PI</option><option>PMI</option></select></div><div class="form-group"><label>Punto 3</label><select id="ev-past3"><option value="">--</option><option>NP</option><option>PL</option><option>PM</option><option>PI</option><option>PMI</option></select></div></div></div>
-<div class="card"><div class="card-title"><span>🌾 Herbáceas</span><span id="mediaHerbaceas" style="background:#3498db;color:#fff;padding:2px 8px;border-radius:10px;font-size:.8rem">x̄ -</span></div><div class="herb-grid" id="ev-herb"></div></div>
-<div class="card"><div class="card-title">🌲 Matorralización</div><p style="font-size:.8rem;color:#666;margin-bottom:10px">Punto 1</p><div class="form-row-3"><div class="form-group"><label>Cob %</label><input type="number" id="ev-mat1cob" min="0" max="100" oninput="actualizarResumenMatorral()"></div><div class="form-group"><label>Alt cm</label><input type="number" id="ev-mat1alt" min="0" oninput="actualizarResumenMatorral()"></div><div class="form-group autocomplete-wrapper"><label>Especie</label><input type="text" id="ev-mat1esp" autocomplete="off" onfocus="showAutocomplete(this)" oninput="filterAutocomplete(this)"><div class="autocomplete-list" id="ac-ev-mat1esp"></div></div></div><p style="font-size:.8rem;color:#666;margin:10px 0">Punto 2</p><div class="form-row-3"><div class="form-group"><label>Cob %</label><input type="number" id="ev-mat2cob" min="0" max="100" oninput="actualizarResumenMatorral()"></div><div class="form-group"><label>Alt cm</label><input type="number" id="ev-mat2alt" min="0" oninput="actualizarResumenMatorral()"></div><div class="form-group autocomplete-wrapper"><label>Especie</label><input type="text" id="ev-mat2esp" autocomplete="off" onfocus="showAutocomplete(this)" oninput="filterAutocomplete(this)"><div class="autocomplete-list" id="ac-ev-mat2esp"></div></div></div><div class="resumen-matorral"><div style="font-weight:bold;margin-bottom:8px">📊 Resumen</div><div class="valores"><div class="valor-item"><div style="font-size:.7rem;color:#666">Media Cob %</div><div class="numero" id="mediaCob">-</div></div><div class="valor-item"><div style="font-size:.7rem;color:#666">Media Alt cm</div><div class="numero" id="mediaAlt">-</div></div><div class="valor-item"><div style="font-size:.7rem;color:#666">Vol m³/ha</div><div class="numero" id="volumenMatorral" style="color:#27ae60">-</div></div></div><div id="especiesMatorral" style="margin-top:8px;font-size:.85rem;color:#666">Especies: -</div></div></div>
-<div class="card"><div class="card-title">📷 Fotos</div><p style="font-size:.85rem;color:#666;margin-bottom:10px">Fotos varias (ilimitadas)</p><button class="btn-camera ev" onclick="abrirCamara('EV','general')">📷 Añadir Foto EV</button><div class="fotos-lista" id="ev-fotos-lista"></div><input type="hidden" id="ev-fotos"><p style="font-size:.85rem;color:#666;margin:15px 0 10px">Fotos Comparativas</p><div class="form-row"><div class="form-group"><label>Waypoint 1</label><button class="btn-camera ev" onclick="abrirCamara('EV','W1')" style="width:100%">📷 W1</button><div class="fotos-lista" id="ev-fc1-lista"></div><input type="hidden" id="ev-fc1"></div><div class="form-group"><label>Waypoint 2</label><button class="btn-camera ev" onclick="abrirCamara('EV','W2')" style="width:100%">📷 W2</button><div class="fotos-lista" id="ev-fc2-lista"></div><input type="hidden" id="ev-fc2"></div></div></div>
+<div class="card"><div class="card-title"><span>🌾 Herbaceas</span><span id="mediaHerbaceas" style="background:#3498db;color:#fff;padding:2px 8px;border-radius:10px;font-size:.8rem">x̄ -</span></div><div class="herb-grid" id="ev-herb"></div></div>
+<div class="card"><div class="card-title">🌲 Matorralizacion</div><p style="font-size:.8rem;color:#666;margin-bottom:10px">Punto 1</p><div class="form-row-3"><div class="form-group"><label>Cob %</label><input type="number" id="ev-mat1cob" min="0" max="100" oninput="actualizarResumenMatorral()"></div><div class="form-group"><label>Alt cm</label><input type="number" id="ev-mat1alt" min="0" oninput="actualizarResumenMatorral()"></div><div class="form-group autocomplete-wrapper"><label>Especie</label><input type="text" id="ev-mat1esp" autocomplete="off" onfocus="showAutocomplete(this)" oninput="filterAutocomplete(this)"><div class="autocomplete-list" id="ac-ev-mat1esp"></div></div></div><p style="font-size:.8rem;color:#666;margin:10px 0">Punto 2</p><div class="form-row-3"><div class="form-group"><label>Cob %</label><input type="number" id="ev-mat2cob" min="0" max="100" oninput="actualizarResumenMatorral()"></div><div class="form-group"><label>Alt cm</label><input type="number" id="ev-mat2alt" min="0" oninput="actualizarResumenMatorral()"></div><div class="form-group autocomplete-wrapper"><label>Especie</label><input type="text" id="ev-mat2esp" autocomplete="off" onfocus="showAutocomplete(this)" oninput="filterAutocomplete(this)"><div class="autocomplete-list" id="ac-ev-mat2esp"></div></div></div><div class="resumen-matorral"><div style="font-weight:bold;margin-bottom:8px">📊 Resumen</div><div class="valores"><div class="valor-item"><div style="font-size:.7rem;color:#666">Media Cob %</div><div class="numero" id="mediaCob">-</div></div><div class="valor-item"><div style="font-size:.7rem;color:#666">Media Alt cm</div><div class="numero" id="mediaAlt">-</div></div><div class="valor-item"><div style="font-size:.7rem;color:#666">Vol m3/ha</div><div class="numero" id="volumenMatorral" style="color:#27ae60">-</div></div></div><div id="especiesMatorral" style="margin-top:8px;font-size:.85rem;color:#666">Especies: -</div></div></div>
+<div class="card"><div class="card-title">📷 Fotos</div><p style="font-size:.85rem;color:#666;margin-bottom:10px">Fotos varias (ilimitadas)</p><button class="btn-camera ev" onclick="abrirCamara('EV','general')">📷 Anadir Foto EV</button><div class="fotos-lista" id="ev-fotos-lista"></div><input type="hidden" id="ev-fotos"><p style="font-size:.85rem;color:#666;margin:15px 0 10px">Fotos Comparativas</p><div class="form-row"><div class="form-group"><label>Waypoint 1</label><button class="btn-camera ev" onclick="abrirCamara('EV','W1')" style="width:100%">📷 W1</button><div class="fotos-lista" id="ev-fc1-lista"></div><input type="hidden" id="ev-fc1"></div><div class="form-group"><label>Waypoint 2</label><button class="btn-camera ev" onclick="abrirCamara('EV','W2')" style="width:100%">📷 W2</button><div class="fotos-lista" id="ev-fc2-lista"></div><input type="hidden" id="ev-fc2"></div></div></div>
 <div class="card"><div class="card-title">📝 Observaciones</div><textarea id="ev-obs" rows="3" placeholder="Notas..."></textarea></div>
 <div class="card"><button class="btn btn-ev" onclick="guardarEV()" id="btnGuardarEV">💾 Guardar EV - T1</button></div>
 </div>
 
-<div id="page-panel" class="page"><div class="card"><div class="card-title">📋 Registros Guardados</div><button class="btn btn-secondary" onclick="syncPending()">🔄 Sincronizar</button><button class="btn" style="background:#9b59b6;color:#fff" onclick="exportarTodosPDF()">📄 Exportar PDF</button><div id="panelList" style="margin-top:15px"></div></div><div class="card"><button class="btn btn-danger" onclick="borrarTodo()">🗑️ Borrar todo</button></div></div>
+<!-- MAPA -->
+<div id="page-mapa" class="page">
+<div class="card">
+<div class="card-title">🗺️ Mapa Interactivo</div>
+<div class="map-controls">
+<select id="mapLayerSelect" onchange="cambiarCapaMapa(this.value)">
+<option value="osm">OpenStreetMap</option>
+<option value="ortofoto">Ortofoto PNOA</option>
+<option value="topo">Topografico</option>
+</select>
+<select id="mapFilterSelect" onchange="filtrarMarcadoresMapa(this.value)">
+<option value="todos">Todos</option>
+<option value="vp">Solo VP</option>
+<option value="ev">Solo EV</option>
+</select>
+<button onclick="document.getElementById('kmlInput').click()">📁 KML</button>
+<button onclick="centrarMapaGPS()">📍 Mi GPS</button>
+</div>
+<div id="kmlLayersList" class="kml-layers-list"></div>
+</div>
+<div id="leafletMap"></div>
+<input type="file" id="kmlInput" accept=".kml,.kmz" style="display:none" onchange="procesarArchivoKML(this)">
+</div>
 
+<!-- PANEL -->
+<div id="page-panel" class="page">
+<div class="card">
+<div class="card-title">📋 Registros Guardados</div>
+<button class="btn btn-secondary" onclick="syncPending()">🔄 Sincronizar</button>
+<button class="btn" style="background:#3498db;color:#fff" onclick="sincronizarFotosCloud()">☁️ Subir Fotos</button>
+<button class="btn" style="background:#9b59b6;color:#fff" onclick="exportarTodosPDF()">📄 Exportar PDF</button>
+<div id="panelList" style="margin-top:15px"></div>
+</div>
+<div class="card"><button class="btn btn-danger" onclick="borrarTodo()">🗑️ Borrar todo</button></div>
+</div>
+
+<!-- CAMERA MODAL (mejorado con ghost) -->
 <div class="camera-modal" id="cameraModal">
 <div class="camera-container">
 <video id="cameraVideo" autoplay playsinline></video>
+<img id="ghostOverlay" alt="">
 <div class="camera-overlay">
 <div class="overlay-compass" id="overlayCompass">🧭 N 0°</div>
+<div class="ghost-controls" id="ghostControls" style="display:none">
+<button id="btnGhostToggle" onclick="toggleGhost()">👻</button>
+<input type="range" id="ghostOpacitySlider" min="0" max="100" value="50" oninput="ajustarOpacidadGhost(this.value)">
+<span id="ghostOpacityLabel" style="color:#fff;font-size:.75rem">50%</span>
+</div>
 <div class="overlay-map"><div class="no-map" id="mapContainer">📍 Mapa</div></div>
 <div class="overlay-info"><div class="codigo" id="overlayCode">--</div><div id="overlayCoords">--</div></div>
 </div>
@@ -157,10 +307,53 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <button class="btn-capture" id="btnCapture" onclick="capturarFoto()"></button>
 </div>
 </div>
-<canvas id="photoCanvas" style="display:none"></canvas>
 
+<!-- PREVIEW MODAL -->
+<div class="preview-modal" id="previewModal">
+<div class="preview-container">
+<canvas id="previewCanvas"></canvas>
+</div>
+<div class="annotation-toolbar hidden" id="annotationToolbar">
+<label>Texto:</label>
+<input type="text" id="annotationText" placeholder="Descripcion..." oninput="actualizarAnotacionTexto()">
+<label>Tamano:</label>
+<input type="range" id="annotationSize" min="1" max="10" value="4" oninput="actualizarAnotacionTamano()">
+<button class="btn-clear-ann" onclick="limpiarAnotacion()">🗑️</button>
+</div>
+<div class="preview-actions">
+<button class="btn-accept" onclick="aceptarFoto()">✅ Aceptar</button>
+<button class="btn-retake" onclick="repetirFoto()">🔄 Repetir</button>
+<button class="btn-annotate" id="btnAnnotate" onclick="toggleModoAnotacion()">✏️ Anotar</button>
+</div>
+</div>
+
+<!-- COMPARATOR MODAL -->
+<div class="comparator-modal" id="comparatorModal">
+<div class="comparator-header">
+<button class="btn-close-comp" onclick="cerrarComparador()">✖ Cerrar</button>
+<button id="btnCompSlider" class="active" onclick="setModoComparador('slider')">Slider</button>
+<button id="btnCompSide" onclick="setModoComparador('sidebyside')">Lado a Lado</button>
+</div>
+<div class="comparator-container" id="comparatorContainer"></div>
+</div>
+
+<!-- SYNC PROGRESS MODAL -->
+<div class="sync-modal" id="syncModal">
+<div class="sync-content">
+<h3 id="syncTitle">Sincronizando...</h3>
+<div class="progress-bar"><div class="progress-fill" id="syncProgressFill"></div></div>
+<div id="syncProgressText" style="font-weight:bold;color:#1a3d2e">0 / 0</div>
+<div class="sync-detail" id="syncDetail"></div>
+</div>
+</div>
+
+<canvas id="photoCanvas" style="display:none"></canvas>
 <div class="loading" id="loading"><div class="spinner"></div></div>
 <div class="toast" id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
