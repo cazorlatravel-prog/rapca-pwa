@@ -7,6 +7,7 @@ var cameraStream=null,camaraTipo='',camaraSubtipo='',currentHeading=0;
 var contadorFotosVP={},contadorFotosEV={};
 var currentLat=null,currentLon=null,currentUTM=null;
 var deferredPrompt=null,mapTilesLoaded=[];
+var mapaLeaflet=null,controlCapas=null,capasKML={},capasKMLRaw={},marcadorPosicion=null;
 var fotosDB=null;
 var fotosCacheMemoria={}; // Cache en memoria como respaldo
 
@@ -127,6 +128,190 @@ function procesarSubidasPendientes(){
 function subirFotoNube(codigo,dataUrl,unidad,tipo){
   if(!isOnline)return;
   fetch(UPLOAD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codigo:codigo,imagen:dataUrl,unidad:unidad,tipo:tipo})}).then(function(res){if(!res.ok)throw new Error('HTTP '+res.status);return res.json();}).then(function(data){if(data.ok){eliminarSubidaPendiente(codigo);showToast('☁️ '+codigo,'success');}else throw new Error(data.error||'Error');}).catch(function(err){console.error('Error subida '+codigo+':',err);});
+}
+
+// --- Mapa de Visitas (Leaflet) ---
+function initMapa(){
+  if(mapaLeaflet)return;
+  if(typeof L==='undefined'){showToast('Leaflet no cargado','error');return;}
+  var osmLayer=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'});
+  var ortofoto=L.tileLayer.wms('https://www.ign.es/wms-inspire/pnoa-ma',{layers:'OI.OrthoimageCoverage',format:'image/jpeg',transparent:false,maxZoom:20,attribution:'PNOA © IGN'});
+  var topo=L.tileLayer.wms('https://www.ideandalucia.es/services/mta10r_2001/wms',{layers:'mta10r_2001',format:'image/png',transparent:false,maxZoom:20,attribution:'MTA 1:10.000 © Junta de Andalucía'});
+  mapaLeaflet=L.map('mapa',{center:[37.8,-3.8],zoom:10,layers:[osmLayer]});
+  controlCapas=L.control.layers({'OpenStreetMap':osmLayer,'Ortofoto PNOA':ortofoto,'Topográfico 1:10.000':topo},{},{collapsed:true}).addTo(mapaLeaflet);
+  if(currentLat&&currentLon){
+    marcadorPosicion=L.marker([currentLat,currentLon],{icon:L.divIcon({className:'',html:'<div style="background:#3498db;width:16px;height:16px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 6px rgba(0,0,0,.4)"></div>',iconSize:[16,16],iconAnchor:[8,8]})}).addTo(mapaLeaflet).bindPopup('Mi posición');
+    mapaLeaflet.setView([currentLat,currentLon],14);
+  }
+  cargarCapasKMLGuardadas();
+}
+function cargarArchivoMapa(file){
+  if(!file)return;
+  var ext=file.name.split('.').pop().toLowerCase();
+  if(ext==='kml'){
+    var reader=new FileReader();
+    reader.onload=function(e){procesarKML(e.target.result,file.name);};
+    reader.readAsText(file);
+  }else if(ext==='kmz'){
+    if(typeof JSZip==='undefined'){showToast('JSZip no cargado','error');return;}
+    var reader=new FileReader();
+    reader.onload=function(e){
+      JSZip.loadAsync(e.target.result).then(function(zip){
+        var kmlFile=null;
+        zip.forEach(function(path,entry){if(path.match(/\.kml$/i)&&!kmlFile)kmlFile=entry;});
+        if(kmlFile)return kmlFile.async('string');
+        throw new Error('No hay KML dentro del KMZ');
+      }).then(function(kmlText){procesarKML(kmlText,file.name);}).catch(function(err){showToast('Error KMZ: '+err.message,'error');});
+    };
+    reader.readAsArrayBuffer(file);
+  }else{showToast('Formato no soportado','error');}
+}
+function procesarKML(kmlText,nombre){
+  if(!mapaLeaflet)initMapa();
+  var layer=parsearKML(kmlText);
+  var n=layer.getLayers().length;
+  if(n===0){showToast('Sin elementos en '+nombre,'info');return;}
+  layer.addTo(mapaLeaflet);
+  capasKML[nombre]=layer;
+  capasKMLRaw[nombre]=kmlText;
+  if(controlCapas)controlCapas.addOverlay(layer,nombre);
+  mapaLeaflet.fitBounds(layer.getBounds(),{padding:[30,30]});
+  actualizarListaCapas();
+  guardarCapasKMLLocal();
+  showToast(nombre+': '+n+' elementos','success');
+}
+function parsearKML(kmlText){
+  var parser=new DOMParser();
+  var cleanKml=kmlText.replace(/xmlns="[^"]*"/g,'');
+  var doc=parser.parseFromString(cleanKml,'text/xml');
+  var layers=L.featureGroup();
+  // Parsear estilos
+  var estilos={};
+  var styleEls=doc.querySelectorAll('Style');
+  for(var i=0;i<styleEls.length;i++){
+    var s=styleEls[i],id=s.getAttribute('id');
+    if(!id)continue;
+    estilos[id]={};
+    var ls=s.querySelector('LineStyle'),ps=s.querySelector('PolyStyle'),is=s.querySelector('IconStyle');
+    if(ls){var lc=ls.querySelector('color'),lw=ls.querySelector('width');if(lc)estilos[id].lineColor=kmlColorToHex(lc.textContent);if(lw)estilos[id].lineWidth=parseFloat(lw.textContent);}
+    if(ps){var pc=ps.querySelector('color');if(pc)estilos[id].fillColor=kmlColorToHex(pc.textContent);}
+    if(is){var ic=is.querySelector('color');if(ic)estilos[id].iconColor=kmlColorToHex(ic.textContent);}
+  }
+  // Parsear StyleMap
+  var styleMaps=doc.querySelectorAll('StyleMap');
+  for(var i=0;i<styleMaps.length;i++){
+    var sm=styleMaps[i],smId=sm.getAttribute('id');
+    if(!smId)continue;
+    var pairs=sm.querySelectorAll('Pair');
+    for(var j=0;j<pairs.length;j++){
+      var key=pairs[j].querySelector('key'),url=pairs[j].querySelector('styleUrl');
+      if(key&&key.textContent==='normal'&&url){var refId=url.textContent.replace('#','');if(estilos[refId])estilos[smId]=estilos[refId];}
+    }
+  }
+  // Parsear placemarks
+  var pms=doc.querySelectorAll('Placemark');
+  for(var i=0;i<pms.length;i++){
+    var pm=pms[i];
+    var nameEl=pm.querySelector('name'),descEl=pm.querySelector('description');
+    var nombre=nameEl?nameEl.textContent.trim():'';
+    var desc=descEl?descEl.textContent.trim():'';
+    var popup=nombre?'<b>'+nombre+'</b>':'';
+    if(desc)popup+=(popup?'<br>':'')+desc;
+    // Obtener estilo
+    var styleUrl=pm.querySelector('styleUrl');
+    var estilo={};
+    if(styleUrl){var sid=styleUrl.textContent.replace('#','');estilo=estilos[sid]||{};}
+    // Geometrías
+    var point=pm.querySelector('Point');
+    var line=pm.querySelector('LineString');
+    var polygon=pm.querySelector('Polygon');
+    if(point){
+      var coordsEl=point.querySelector('coordinates');
+      if(coordsEl){
+        var c=parseKMLCoord(coordsEl.textContent);
+        var mkOpts={};
+        if(estilo.iconColor){mkOpts.icon=L.divIcon({className:'',html:'<div style="background:'+estilo.iconColor+';width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',iconSize:[12,12],iconAnchor:[6,6]});}
+        var mk=L.marker([c[0][1],c[0][0]],mkOpts);
+        if(popup)mk.bindPopup(popup);
+        layers.addLayer(mk);
+      }
+    }
+    if(line){
+      var coordsEl=line.querySelector('coordinates');
+      if(coordsEl){
+        var coords=parseKMLCoord(coordsEl.textContent);
+        var latlngs=coords.map(function(c){return[c[1],c[0]];});
+        var opts={color:estilo.lineColor||'#3388ff',weight:estilo.lineWidth||3};
+        var pl=L.polyline(latlngs,opts);
+        if(popup)pl.bindPopup(popup);
+        layers.addLayer(pl);
+      }
+    }
+    if(polygon){
+      var outerCoords=polygon.querySelector('outerBoundaryIs coordinates');
+      if(!outerCoords){var ob=polygon.querySelector('outerBoundaryIs');if(ob)outerCoords=ob.querySelector('coordinates');}
+      if(outerCoords){
+        var coords=parseKMLCoord(outerCoords.textContent);
+        var latlngs=coords.map(function(c){return[c[1],c[0]];});
+        var opts={color:estilo.lineColor||'#3388ff',fillColor:estilo.fillColor||'#3388ff',fillOpacity:0.3};
+        var pg=L.polygon(latlngs,opts);
+        if(popup)pg.bindPopup(popup);
+        layers.addLayer(pg);
+      }
+    }
+  }
+  return layers;
+}
+function parseKMLCoord(text){
+  return text.trim().split(/\s+/).filter(function(s){return s.length>0;}).map(function(c){var p=c.split(',');return[parseFloat(p[0]),parseFloat(p[1]),parseFloat(p[2]||0)];});
+}
+function kmlColorToHex(kc){
+  kc=kc.trim();if(kc.length!==8)return'#3388ff';
+  return'#'+kc.substr(6,2)+kc.substr(4,2)+kc.substr(2,2);
+}
+function actualizarListaCapas(){
+  var el=document.getElementById('capas-lista');if(!el)return;
+  var html='';
+  Object.keys(capasKML).forEach(function(nombre){
+    var n=capasKML[nombre].getLayers().length;
+    html+='<div class="capas-item"><span>📄 '+nombre+' ('+n+')</span><button onclick="eliminarCapaMapa(\''+nombre.replace(/'/g,"\\'")+'\')">✖</button></div>';
+  });
+  el.innerHTML=html;
+}
+function eliminarCapaMapa(nombre){
+  if(capasKML[nombre]){
+    mapaLeaflet.removeLayer(capasKML[nombre]);
+    if(controlCapas)controlCapas.removeLayer(capasKML[nombre]);
+    delete capasKML[nombre];delete capasKMLRaw[nombre];
+    actualizarListaCapas();guardarCapasKMLLocal();
+    showToast('Capa eliminada','success');
+  }
+}
+function limpiarCapasMapa(){
+  if(Object.keys(capasKML).length===0){showToast('No hay capas','info');return;}
+  if(!confirm('¿Eliminar todas las capas?'))return;
+  Object.keys(capasKML).forEach(function(k){mapaLeaflet.removeLayer(capasKML[k]);if(controlCapas)controlCapas.removeLayer(capasKML[k]);});
+  capasKML={};capasKMLRaw={};
+  actualizarListaCapas();guardarCapasKMLLocal();
+  showToast('Capas eliminadas','success');
+}
+function centrarEnMiPosicion(){
+  if(!mapaLeaflet)initMapa();
+  if(!currentLat||!currentLon){showToast('Sin señal GPS','error');return;}
+  if(marcadorPosicion){marcadorPosicion.setLatLng([currentLat,currentLon]);}
+  else{marcadorPosicion=L.marker([currentLat,currentLon],{icon:L.divIcon({className:'',html:'<div style="background:#3498db;width:16px;height:16px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 6px rgba(0,0,0,.4)"></div>',iconSize:[16,16],iconAnchor:[8,8]})}).addTo(mapaLeaflet).bindPopup('Mi posición');}
+  mapaLeaflet.setView([currentLat,currentLon],16);
+}
+function guardarCapasKMLLocal(){
+  try{localStorage.setItem('rapca_kml_capas',JSON.stringify(capasKMLRaw));}catch(e){console.warn('KML demasiado grande para localStorage');}
+}
+function cargarCapasKMLGuardadas(){
+  var saved=localStorage.getItem('rapca_kml_capas');
+  if(!saved)return;
+  try{var data=JSON.parse(saved);Object.keys(data).forEach(function(nombre){
+    var layer=parsearKML(data[nombre]);
+    if(layer.getLayers().length>0){layer.addTo(mapaLeaflet);capasKML[nombre]=layer;capasKMLRaw[nombre]=data[nombre];if(controlCapas)controlCapas.addOverlay(layer,nombre);}
+  });actualizarListaCapas();}catch(e){console.error('Error cargando KML guardados:',e);}
 }
 
 window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();deferredPrompt=e;mostrarBotonInstalar();});
@@ -281,7 +466,7 @@ function showAutocomplete(i){var l=document.getElementById('ac-'+i.id);if(!l)ret
 function filterAutocomplete(i){if(currentAutocomplete&&currentAutocomplete.input===i)renderAutocompleteList(i.value);}
 function renderAutocompleteList(f){if(!currentAutocomplete)return;var l=currentAutocomplete.list,fL=f.toLowerCase(),h='';PLANTAS.filter(function(p){return p.toLowerCase().indexOf(fL)!==-1;}).forEach(function(p){h+='<div class="autocomplete-item" onclick="selectAutocomplete(\''+p.replace(/'/g,"\\'")+'\')">'+p+'</div>';});l.innerHTML=h||'<div class="autocomplete-item" style="color:#999">Sin resultados</div>';}
 function selectAutocomplete(v){if(currentAutocomplete){currentAutocomplete.input.value=v;currentAutocomplete.list.classList.remove('show');actualizarResumenMatorral();currentAutocomplete=null;}}
-function showPage(p){document.querySelectorAll('.page').forEach(function(x){x.classList.remove('active');});document.querySelectorAll('.nav-btn').forEach(function(b){b.classList.remove('active');});document.getElementById('page-'+p).classList.add('active');document.querySelectorAll('.nav-btn')[['menu','vp','ev','panel'].indexOf(p)].classList.add('active');if(p==='panel')loadPanel();window.scrollTo(0,0);}
+function showPage(p){document.querySelectorAll('.page').forEach(function(x){x.classList.remove('active');});document.querySelectorAll('.nav-btn').forEach(function(b){b.classList.remove('active');});document.getElementById('page-'+p).classList.add('active');document.querySelectorAll('.nav-btn')[['menu','vp','ev','mapa','panel'].indexOf(p)].classList.add('active');if(p==='panel')loadPanel();if(p==='mapa'){setTimeout(function(){initMapa();if(mapaLeaflet)mapaLeaflet.invalidateSize();},100);}window.scrollTo(0,0);}
 function toggleSection(id){document.getElementById(id).classList.toggle('open');}
 function setTransecto(n){transectoActual=n;document.querySelectorAll('.transecto-btn').forEach(function(b,i){b.classList.toggle('active',i===n-1);});document.getElementById('btnGuardarEV').textContent='💾 Guardar EV - T'+n;}
 function guardarBorradores(){localStorage.setItem('rapca_borrador_vp',JSON.stringify(obtenerDatosVP()));localStorage.setItem('rapca_borrador_ev',JSON.stringify(obtenerDatosEV()));}
