@@ -69,14 +69,16 @@ function initUsuariosLocal(){
 }
 function loginLocal(email,password){
   var users=getUsuariosLocal();
-  var user=users.find(function(u){return u.email===email&&u.password===password&&u.activo!==0;});
+  var emailNorm=email.trim().toLowerCase();
+  var user=users.find(function(u){return u.email.toLowerCase()===emailNorm&&u.password===password&&u.activo!==0;});
   if(user)return{ok:true,token:'local_'+Date.now(),usuario:{email:user.email,nombre:user.nombre,rol:user.rol,id:user.id}};
   return{ok:false,error:'Email o contraseña incorrectos'};
 }
 function crearUsuarioLocal(email,nombre,password,rol){
   var users=getUsuariosLocal();
-  if(users.find(function(u){return u.email===email;}))return{ok:false,error:'Email ya existe'};
-  users.push({id:Date.now(),email:email,nombre:nombre,password:password,rol:rol||'operador',activo:1});
+  var emailNorm=email.trim().toLowerCase();
+  if(users.find(function(u){return u.email.toLowerCase()===emailNorm;}))return{ok:false,error:'Email ya existe'};
+  users.push({id:Date.now(),email:emailNorm,nombre:nombre,password:password,rol:rol||'operador',activo:1});
   guardarUsuariosLocal(users);
   return{ok:true};
 }
@@ -882,7 +884,7 @@ function agregarFotoALista(c){var lId,iId,pre=(camaraTipo==='VP')?'vp':(camaraTi
 
 // --- Autenticación y Sesiones ---
 function iniciarSesion(){
-  var email=document.getElementById('login-email').value.trim();
+  var email=document.getElementById('login-email').value.trim().toLowerCase();
   var pass=document.getElementById('login-password').value;
   if(!email||!pass){mostrarErrorLogin('Email y contraseña requeridos');return;}
   var btn=document.getElementById('btnLogin');btn.textContent='Entrando...';btn.disabled=true;
