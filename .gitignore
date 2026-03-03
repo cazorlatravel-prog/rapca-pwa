@@ -1,1 +1,1 @@
-config.php
+# config.php ya no tiene secrets hardcodeados, lee del .env del hosting
