@@ -610,17 +610,18 @@ function exportarMapaUnidadPDF(){
 
   if(lat&&lon&&mapaLeaflet){
     mapaLeaflet.setView([lat,lon],15);
-    setTimeout(function(){capturarYGenerarPDF(infra,unidadId,rs,vpCount,elCount,eiCount,lat,lon);},800);
+    setTimeout(function(){capturarYGenerarPDF(infra,unidadId,lat,lon);},800);
   }else{
-    capturarYGenerarPDF(infra,unidadId,rs,vpCount,elCount,eiCount,lat,lon);
+    capturarYGenerarPDF(infra,unidadId,lat,lon);
   }
 }
 
-function capturarYGenerarPDF(infra,unidadId,rs,vpCount,elCount,eiCount,lat,lon){
+function capturarYGenerarPDF(infra,unidadId,lat,lon){
   var mapaEl=document.getElementById('mapa');
+  var zoom=mapaLeaflet?mapaLeaflet.getZoom():15;
 
   function generarConImagen(imgData){
-    var html=generarHTMLMapaPDF(infra,unidadId,rs,vpCount,elCount,eiCount,lat,lon,imgData);
+    var html=generarHTMLMapaPDF(infra,unidadId,lat,lon,imgData,zoom);
     var w=window.open('','_blank');
     if(!w){showToast('Permite ventanas emergentes para generar PDF','error');showLoading(false);return;}
     w.document.write(html);
@@ -632,10 +633,9 @@ function capturarYGenerarPDF(infra,unidadId,rs,vpCount,elCount,eiCount,lat,lon){
   // Intentar capturar mapa con html2canvas
   if(typeof html2canvas!=='undefined'&&mapaEl){
     html2canvas(mapaEl,{useCORS:true,allowTaint:true,scale:2,logging:false}).then(function(canvas){
-      generarConImagen(canvas.toDataURL('image/jpeg',0.85));
+      generarConImagen(canvas.toDataURL('image/jpeg',0.90));
     }).catch(function(e){
       console.error('Error capturando mapa:',e);
-      // Generar sin imagen del mapa
       generarConImagen(null);
     });
   }else{
@@ -643,119 +643,124 @@ function capturarYGenerarPDF(infra,unidadId,rs,vpCount,elCount,eiCount,lat,lon){
   }
 }
 
-function generarHTMLMapaPDF(infra,unidadId,rs,vpCount,elCount,eiCount,lat,lon,imgData){
+function calcularEscalaMapa(lat,zoom){
+  // Resolución en metros/pixel a nivel del mar: 156543.03 * cos(lat) / 2^zoom
+  var metrosPorPixel=156543.03*Math.cos(lat*Math.PI/180)/Math.pow(2,zoom);
+  // A4 impreso a 96 DPI: ~190mm de ancho útil = ~718 pixels
+  // Con scale:2 en html2canvas el mapa tiene más resolución, pero al imprimir
+  // se ajusta al ancho de página. Estimamos ~718px de ancho visible en pantalla
+  var anchoPxMapa=document.getElementById('mapa')?document.getElementById('mapa').offsetWidth:718;
+  var anchoMetros=anchoPxMapa*metrosPorPixel;
+  // Escala = anchoMetros / anchoReal en papel (0.19m para A4 con márgenes)
+  var escalaNum=Math.round(anchoMetros/0.19);
+  // Redondear a número "bonito"
+  var bonitos=[500,1000,2000,2500,5000,10000,15000,20000,25000,50000,75000,100000,150000,200000,250000,500000];
+  var mejor=escalaNum;
+  for(var i=0;i<bonitos.length;i++){
+    if(bonitos[i]>=escalaNum*0.7){mejor=bonitos[i];break;}
+  }
+  return '1:'+mejor.toLocaleString('es-ES');
+}
+
+function generarHTMLMapaPDF(infra,unidadId,lat,lon,imgData,zoom){
   var fecha=new Date().toLocaleDateString('es-ES',{year:'numeric',month:'long',day:'numeric'});
-  var h='<!DOCTYPE html><html><head><meta charset="utf-8"><title>RAPCA — Mapa '+(unidadId||'Unidad')+'</title>';
-  h+='<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;padding:20px;max-width:900px;margin:0 auto;color:#333}';
-  h+='.header{background:linear-gradient(135deg,#1a3d2e,#2d6a4f);color:#fff;padding:20px 24px;border-radius:12px;margin-bottom:20px}';
-  h+='.header h1{font-size:1.5rem;margin-bottom:4px}.header .sub{font-size:.9rem;opacity:.85}';
-  h+='.card{background:#fff;border:1px solid #ddd;border-radius:10px;padding:16px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.06)}';
-  h+='.card-title{font-weight:bold;color:#1a3d2e;font-size:1.05rem;margin-bottom:10px;border-bottom:2px solid #e8e8e8;padding-bottom:6px}';
-  h+='.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.info-item{font-size:.85rem}.info-label{font-weight:bold;color:#555;font-size:.75rem;text-transform:uppercase}.info-value{color:#1a3d2e}';
-  h+='.badges{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.badge{padding:6px 14px;border-radius:20px;font-size:.85rem;font-weight:bold;color:#fff}';
-  h+='.badge-vp{background:#88d8b0;color:#1a3d2e}.badge-el{background:#2ecc71}.badge-ei{background:#fd9853}';
-  h+='.mapa-img{width:100%;border-radius:10px;border:2px solid #ddd;margin:10px 0}';
-  h+='.reg-table{width:100%;border-collapse:collapse;font-size:.8rem;margin-top:8px}';
-  h+='.reg-table th{background:#1a3d2e;color:#fff;padding:8px;text-align:left}.reg-table td{padding:6px 8px;border-bottom:1px solid #eee}';
-  h+='.reg-table tr:nth-child(even){background:#f9f9f9}';
-  h+='.tipo-tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.75rem;font-weight:bold;color:#fff}';
-  h+='.tipo-vp{background:#88d8b0;color:#1a3d2e}.tipo-el{background:#2ecc71}.tipo-ei{background:#fd9853}';
-  h+='.footer{text-align:center;color:#999;font-size:.75rem;margin-top:20px;padding-top:10px;border-top:1px solid #eee}';
-  h+='@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;padding:10px}img{max-width:100%;height:auto}}';
+  var escala=(lat&&zoom)?calcularEscalaMapa(lat,zoom):'N/D';
+  var monte=infra?(infra.nombre||''):'';
+  var idZona=infra?(infra.idZona||''):'';
+  var municipio=infra?(infra.municipio||''):'';
+  var superficie=infra?(infra.superficie||''):'';
+
+  var h='<!DOCTYPE html><html><head><meta charset="utf-8"><title>RAPCA — '+(unidadId||'Mapa')+'</title>';
+  h+='<style>';
+  h+='@page{size:A4 landscape;margin:0}';
+  h+='*{margin:0;padding:0;box-sizing:border-box}';
+  h+='html,body{width:100%;height:100%;overflow:hidden;font-family:Arial,Helvetica,sans-serif}';
+  h+='.page{position:relative;width:297mm;height:210mm;overflow:hidden;background:#fff}';
+  // Borde del plano
+  h+='.marco{position:absolute;top:5mm;left:5mm;right:5mm;bottom:5mm;border:2px solid #1a3d2e}';
+  // Mapa ocupa todo
+  h+='.mapa-container{position:absolute;top:5mm;left:5mm;right:5mm;bottom:5mm;overflow:hidden}';
+  h+='.mapa-container img{width:100%;height:100%;object-fit:cover}';
+  // Sin mapa — fondo gris
+  h+='.sin-mapa{width:100%;height:100%;background:#e8e8e8;display:flex;align-items:center;justify-content:center;color:#999;font-size:1.5rem}';
+  // Título RAPCA arriba centrado
+  h+='.titulo{position:absolute;top:7mm;left:50%;transform:translateX(-50%);background:rgba(26,61,46,0.92);color:#fff;padding:6px 28px;border-radius:6px;font-size:14pt;font-weight:bold;letter-spacing:2px;z-index:10;box-shadow:0 2px 8px rgba(0,0,0,.3)}';
+  // Cajetín abajo izquierda
+  h+='.cajetin{position:absolute;bottom:8mm;left:8mm;background:rgba(255,255,255,0.95);border:2px solid #1a3d2e;border-radius:4px;padding:0;width:72mm;z-index:10;box-shadow:0 2px 10px rgba(0,0,0,.25);overflow:hidden}';
+  h+='.cajetin-header{background:#1a3d2e;color:#fff;padding:5px 10px;font-size:9pt;font-weight:bold;letter-spacing:1px;text-align:center}';
+  h+='.cajetin-body{padding:6px 10px}';
+  h+='.cajetin-row{display:flex;border-bottom:1px solid #ddd;padding:3px 0;font-size:7.5pt;line-height:1.3}';
+  h+='.cajetin-row:last-child{border-bottom:none}';
+  h+='.cajetin-label{width:28mm;font-weight:bold;color:#1a3d2e;flex-shrink:0}';
+  h+='.cajetin-value{flex:1;color:#333}';
+  h+='.cajetin-escala{border-top:2px solid #1a3d2e;padding:5px 10px;text-align:center;font-size:8.5pt;font-weight:bold;color:#1a3d2e;background:#f0f7f0}';
+  // Barra de escala gráfica abajo derecha
+  h+='.escala-grafica{position:absolute;bottom:8mm;right:8mm;z-index:10;text-align:center}';
+  h+='.escala-barra{display:flex;height:5mm;border:1px solid #333}';
+  h+='.escala-seg{width:15mm;height:100%}.escala-seg.negro{background:#1a3d2e}.escala-seg.blanco{background:#fff}';
+  h+='.escala-nums{display:flex;justify-content:space-between;font-size:6pt;color:#333;font-weight:bold;margin-top:1px;width:60mm}';
+  h+='.escala-titulo{font-size:6.5pt;color:#555;margin-top:1px}';
+  // Norte
+  h+='.norte{position:absolute;top:7mm;right:8mm;z-index:10;text-align:center;font-size:10pt;font-weight:bold;color:#1a3d2e;background:rgba(255,255,255,0.9);border-radius:50%;width:14mm;height:14mm;display:flex;flex-direction:column;align-items:center;justify-content:center;border:2px solid #1a3d2e;box-shadow:0 2px 6px rgba(0,0,0,.2)}';
+  h+='.norte-arrow{font-size:14pt;line-height:1}';
+  h+='.norte-n{font-size:7pt;letter-spacing:1px}';
+  // Print
+  h+='@media print{html,body{width:297mm;height:210mm;-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{page-break-after:avoid}}';
   h+='</style></head><body>';
 
-  // Header
-  h+='<div class="header"><h1>RAPCA Campo — Informe de Unidad</h1>';
-  h+='<div class="sub">'+(unidadId||'Sin ID')+' — '+fecha+'</div></div>';
+  h+='<div class="page">';
 
-  // Datos de infraestructura
-  if(infra){
-    h+='<div class="card"><div class="card-title">🌳 Datos de Infraestructura</div>';
-    h+='<div class="info-grid">';
-    var campos=[
-      {l:'ID Unidad',v:infra.idUnidad},{l:'ID Zona',v:infra.idZona},
-      {l:'Nombre',v:infra.nombre},{l:'Cod INFOCA',v:infra.codInfoca},
-      {l:'Provincia',v:infra.provincia},{l:'Municipio',v:infra.municipio},
-      {l:'PN',v:infra.pn},{l:'Contrato',v:infra.contrato},
-      {l:'Superficie',v:infra.superficie},{l:'Pago Máximo',v:infra.pagoMaximo},
-      {l:'Vegetación',v:infra.vegetacion},{l:'Pendiente',v:infra.pendiente},
-      {l:'Distancia',v:infra.distancia}
-    ];
-    campos.forEach(function(c){
-      if(c.v)h+='<div class="info-item"><div class="info-label">'+c.l+'</div><div class="info-value">'+c.v+'</div></div>';
-    });
-    // Campos extra
-    if(infra.extras){
-      Object.keys(infra.extras).forEach(function(k){
-        if(infra.extras[k])h+='<div class="info-item"><div class="info-label">'+k+'</div><div class="info-value">'+infra.extras[k]+'</div></div>';
-      });
-    }
-    h+='</div></div>';
-  }
-
-  // Resumen de visitas
-  h+='<div class="card"><div class="card-title">📊 Resumen de Visitas</div>';
-  h+='<div class="badges">';
-  h+='<div class="badge badge-vp">VP: '+vpCount+'</div>';
-  h+='<div class="badge badge-el">EL: '+elCount+'</div>';
-  h+='<div class="badge badge-ei">EI: '+eiCount+'</div>';
-  h+='<div class="badge" style="background:#9b59b6">Total: '+rs.length+'</div>';
-  h+='</div>';
-  if(lat&&lon){
-    h+='<div style="font-size:.8rem;color:#666;margin-top:4px">Coordenadas: '+parseFloat(lat).toFixed(6)+', '+parseFloat(lon).toFixed(6)+'</div>';
-  }
-  h+='</div>';
-
-  // Imagen del mapa
+  // Mapa como fondo completo
+  h+='<div class="mapa-container">';
   if(imgData){
-    h+='<div class="card"><div class="card-title">🗺️ Localización en Mapa</div>';
-    h+='<img src="'+imgData+'" class="mapa-img" alt="Mapa de la unidad '+unidadId+'">';
-    h+='</div>';
+    h+='<img src="'+imgData+'" alt="Mapa">';
+  }else{
+    h+='<div class="sin-mapa">Sin captura de mapa disponible</div>';
   }
+  h+='</div>';
 
-  // Tabla de registros
-  if(rs.length>0){
-    h+='<div class="card"><div class="card-title">📋 Detalle de Registros ('+rs.length+')</div>';
-    h+='<table class="reg-table"><thead><tr><th>Tipo</th><th>Fecha</th><th>Transecto</th><th>Operador</th><th>Fotos</th><th>Enviado</th></tr></thead><tbody>';
-    rs.sort(function(a,b){return a.fecha>b.fecha?-1:1;});
-    rs.forEach(function(r){
-      var tipoClass=r.tipo==='VP'?'tipo-vp':r.tipo==='EL'?'tipo-el':'tipo-ei';
-      var d=r.datos||{};
-      var nFotos=0;
-      if(d.fotos)nFotos+=d.fotos.split(',').filter(function(x){return x.trim();}).length;
-      if(d.fotosComp)d.fotosComp.forEach(function(fc){if(fc.numero)nFotos+=fc.numero.split(',').filter(function(x){return x.trim();}).length;});
-      h+='<tr><td><span class="tipo-tag '+tipoClass+'">'+r.tipo+'</span></td>';
-      h+='<td>'+r.fecha+'</td>';
-      h+='<td>'+(r.transecto||'-')+'</td>';
-      h+='<td>'+(r.operador_nombre||'-')+'</td>';
-      h+='<td>'+nFotos+'</td>';
-      h+='<td>'+(r.enviado?'✅':'⏳')+'</td></tr>';
-    });
-    h+='</tbody></table></div>';
-  }
+  // Marco/borde
+  h+='<div class="marco"></div>';
 
-  // Detalle de pastoreo y observaciones por registro
-  rs.forEach(function(r){
-    var d=r.datos||{};
-    var hasDatos=d.pastoreo||d.observacionPastoreo||d.observaciones;
-    if(!hasDatos)return;
-    h+='<div class="card"><div class="card-title">'+r.tipo+' — '+r.fecha+(r.transecto?' (T'+r.transecto+')':'')+'</div>';
-    if(d.pastoreo&&d.pastoreo.length>0){
-      var labels=['Grado 1','Grado 2','Grado 3'];
-      h+='<div style="margin-bottom:8px"><strong>Pastoreo:</strong> '+d.pastoreo.map(function(v,i){return labels[i]+': '+(v||'-');}).join(' | ')+'</div>';
-    }
-    if(d.observacionPastoreo){
-      var op=d.observacionPastoreo;
-      h+='<div style="margin-bottom:8px"><strong>Obs. Pastoreo:</strong> Señal: '+(op.senal||'-')+' | Veredas: '+(op.veredas||'-')+' | Cagarrutas: '+(op.cagarrutas||'-')+'</div>';
-    }
-    if(d.observaciones){
-      h+='<div style="background:#fffde7;padding:8px;border-radius:6px;font-size:.85rem"><strong>Observaciones:</strong> '+d.observaciones+'</div>';
-    }
-    h+='</div>';
-  });
+  // Título RAPCA
+  h+='<div class="titulo">RAPCA</div>';
 
-  // Footer
-  h+='<div class="footer">Generado por RAPCA Campo — '+fecha+'</div>';
+  // Norte
+  h+='<div class="norte"><div class="norte-arrow">&#9650;</div><div class="norte-n">N</div></div>';
+
+  // Cajetín con datos
+  h+='<div class="cajetin">';
+  h+='<div class="cajetin-header">RAPCA &mdash; EMA</div>';
+  h+='<div class="cajetin-body">';
+  h+='<div class="cajetin-row"><div class="cajetin-label">ID Zona</div><div class="cajetin-value">'+(idZona||'—')+'</div></div>';
+  h+='<div class="cajetin-row"><div class="cajetin-label">ID Unidad</div><div class="cajetin-value">'+(unidadId||'—')+'</div></div>';
+  h+='<div class="cajetin-row"><div class="cajetin-label">Monte</div><div class="cajetin-value">'+(monte||'—')+'</div></div>';
+  h+='<div class="cajetin-row"><div class="cajetin-label">Municipio</div><div class="cajetin-value">'+(municipio||'—')+'</div></div>';
+  h+='<div class="cajetin-row"><div class="cajetin-label">Superficie</div><div class="cajetin-value">'+(superficie?superficie+' ha':'—')+'</div></div>';
+  h+='</div>';
+  h+='<div class="cajetin-escala">Escala aprox. '+escala+'</div>';
+  h+='</div>';
+
+  // Escala gráfica
+  var metrosPorPx=156543.03*Math.cos((lat||37.8)*Math.PI/180)/Math.pow(2,zoom||15);
+  // 15mm en papel ≈ cuántos metros reales (asumiendo 96dpi: 15mm ~ 57px en pantalla)
+  var metrosPorSeg=metrosPorPx*57;
+  // Redondear segmento a número bonito
+  var segs=[50,100,200,250,500,1000,2000,5000,10000];
+  var segMetros=metrosPorSeg;
+  for(var si=0;si<segs.length;si++){if(segs[si]>=metrosPorSeg*0.5){segMetros=segs[si];break;}}
+  var segLabel=segMetros>=1000?(segMetros/1000)+' km':segMetros+' m';
+  var seg2=segMetros*2;var seg2Label=seg2>=1000?(seg2/1000)+' km':seg2+' m';
+  var seg4=segMetros*4;var seg4Label=seg4>=1000?(seg4/1000)+' km':seg4+' m';
+
+  h+='<div class="escala-grafica">';
+  h+='<div class="escala-barra"><div class="escala-seg negro"></div><div class="escala-seg blanco"></div><div class="escala-seg negro"></div><div class="escala-seg blanco"></div></div>';
+  h+='<div class="escala-nums"><span>0</span><span>'+segLabel+'</span><span>'+seg2Label+'</span><span>'+seg4Label+'</span></div>';
+  h+='<div class="escala-titulo">Escala '+escala+'</div>';
+  h+='</div>';
+
+  h+='</div>'; // .page
+
   h+='<script>setTimeout(function(){window.print();},1200);<\/script>';
   h+='</body></html>';
   return h;
