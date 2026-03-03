@@ -127,6 +127,41 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .capas-item{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:#f9f9f9;border-radius:6px;margin-bottom:5px;font-size:.85rem}
 .capas-item button{background:#e74c3c;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:.75rem}
 .menu-btn.mapa{border-top-color:#3498db}
+/* Leaflet controles grandes para móvil */
+.leaflet-control-zoom a{width:44px!important;height:44px!important;line-height:44px!important;font-size:22px!important}
+.leaflet-control-layers-toggle{width:44px!important;height:44px!important;background-size:28px 28px!important}
+.leaflet-control-layers{font-size:.9rem}
+.leaflet-control-layers label{padding:4px 2px}
+/* Fullscreen mapa */
+.mapa-fullscreen #page-mapa{position:fixed;top:0;left:0;right:0;bottom:0;z-index:5000;padding:0;margin:0;background:#fff;overflow:hidden}
+.mapa-fullscreen #page-mapa .card{display:none}
+.mapa-fullscreen #mapa{height:100vh!important;min-height:100vh!important;border-radius:0!important;box-shadow:none!important}
+.mapa-fullscreen .mapa-toolbar-float{display:flex!important}
+.mapa-fullscreen .mapa-search-float{display:block!important}
+.mapa-fullscreen header,.mapa-fullscreen nav{display:none!important}
+.mapa-toolbar-float{display:none;position:fixed;top:10px;left:10px;right:10px;z-index:5100;gap:6px;flex-wrap:wrap;align-items:center}
+.mapa-toolbar-float button,.mapa-toolbar-float label,.mapa-toolbar-float select,.mapa-toolbar-float input{background:#fff;border:2px solid #ddd;border-radius:10px;padding:8px 12px;font-size:.8rem;box-shadow:0 2px 8px rgba(0,0,0,.2);cursor:pointer;min-height:44px;display:flex;align-items:center}
+.mapa-toolbar-float button:active{background:#eee}
+.mapa-toolbar-float .btn-exit-fs{background:#e74c3c;color:#fff;border-color:#e74c3c;font-weight:bold}
+.mapa-toolbar-float .btn-fs-action{background:#1a3d2e;color:#fff;border-color:#1a3d2e}
+/* Buscador puntos comparativos */
+.mapa-search-float{display:none;position:fixed;top:60px;left:10px;z-index:5100;width:calc(100% - 20px);max-width:360px}
+.mapa-search-input{width:100%;padding:10px 40px 10px 14px;border:2px solid #3498db;border-radius:12px;font-size:.9rem;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.2);box-sizing:border-box;min-height:44px}
+.mapa-search-input::placeholder{color:#999}
+.mapa-search-clear{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;font-size:1.2rem;cursor:pointer;color:#999;padding:4px}
+.mapa-search-results{background:#fff;border-radius:10px;margin-top:4px;max-height:250px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.2);display:none}
+.mapa-search-results.show{display:block}
+.mapa-search-result{padding:12px 14px;border-bottom:1px solid #f0f0f0;cursor:pointer;font-size:.85rem;display:flex;align-items:center;gap:8px;min-height:44px}
+.mapa-search-result:last-child{border-bottom:none}
+.mapa-search-result:active{background:#f0f8ff}
+.mapa-search-result .sr-icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:.75rem;color:#fff;flex-shrink:0}
+.mapa-search-result .sr-info{flex:1;min-width:0}
+.mapa-search-result .sr-title{font-weight:bold;color:#1a3d2e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mapa-search-result .sr-sub{font-size:.75rem;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Buscador en modo normal (no fullscreen) */
+.mapa-search-bar{position:relative;margin-top:8px}
+.mapa-search-bar .mapa-search-input{box-shadow:none;border-color:#ddd}
+.mapa-search-bar .mapa-search-results{position:absolute;left:0;right:0;z-index:100}
 .sync-progress{position:fixed;bottom:60px;left:10px;right:10px;background:#fff;border-radius:12px;padding:14px;box-shadow:0 4px 20px rgba(0,0,0,.25);z-index:900;display:none}
 .sync-progress.show{display:block}
 .progress-track{background:#e0e0e0;border-radius:5px;height:8px;overflow:hidden;margin-top:8px}
@@ -360,6 +395,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <button class="btn-camera" style="background:#e67e22;margin:0;font-size:.85rem" onclick="exportarKML()">📤 Exportar KML</button>
 <button class="btn-camera" style="background:#e74c3c;margin:0;font-size:.85rem" onclick="limpiarCapasMapa()">🗑️ Limpiar</button>
 <button class="btn-camera" style="background:#27ae60;margin:0;font-size:.85rem" onclick="centrarEnMiPosicion()">📍 Mi posición</button>
+<button class="btn-camera" style="background:#1a3d2e;margin:0;font-size:.85rem" onclick="toggleMapaFullscreen()">⛶ Pantalla completa</button>
 </div>
 <div id="capas-lista" style="margin-top:8px"></div>
 <div class="map-filters">
@@ -367,8 +403,28 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <select id="mapa-filtro-operador" onchange="actualizarMarcadoresMapa()" class="admin-only"><option value="">Operador</option></select>
 <input type="date" id="mapa-filtro-desde" onchange="actualizarMarcadoresMapa()" style="min-width:110px" placeholder="Desde">
 </div>
+<div class="mapa-search-bar">
+<input type="text" class="mapa-search-input" id="mapa-search-normal" placeholder="Buscar unidad, waypoint..." oninput="buscarEnMapa(this.value,'mapa-search-results-normal')" onfocus="if(this.value)buscarEnMapa(this.value,'mapa-search-results-normal')">
+<button class="mapa-search-clear" onclick="document.getElementById('mapa-search-normal').value='';document.getElementById('mapa-search-results-normal').classList.remove('show')">✕</button>
+<div class="mapa-search-results" id="mapa-search-results-normal"></div>
 </div>
-<div id="mapa" style="height:calc(100vh - 300px);min-height:350px;border-radius:10px;overflow:hidden;box-shadow:0 2px 6px rgba(0,0,0,.15)"></div>
+</div>
+<div id="mapa" style="height:calc(100vh - 340px);min-height:350px;border-radius:10px;overflow:hidden;box-shadow:0 2px 6px rgba(0,0,0,.15)"></div>
+<!-- Toolbar flotante para fullscreen -->
+<div class="mapa-toolbar-float" id="mapa-toolbar-float">
+<button class="btn-exit-fs" onclick="toggleMapaFullscreen()">✕</button>
+<button class="btn-fs-action" onclick="centrarEnMiPosicion()">📍</button>
+<select id="mapa-filtro-tipo-fs" onchange="document.getElementById('mapa-filtro-tipo').value=this.value;actualizarMarcadoresMapa()" style="color:#333"><option value="">Tipo</option><option value="VP">VP</option><option value="EL">EL</option><option value="EI">EI</option><option value="infra">Infra</option></select>
+<button class="btn-fs-action" onclick="toggleMapaSearchFS()">🔍</button>
+</div>
+<!-- Buscador flotante para fullscreen -->
+<div class="mapa-search-float" id="mapa-search-float">
+<div style="position:relative">
+<input type="text" class="mapa-search-input" id="mapa-search-fs" placeholder="Buscar unidad, waypoint..." oninput="buscarEnMapa(this.value,'mapa-search-results-fs')" onfocus="if(this.value)buscarEnMapa(this.value,'mapa-search-results-fs')">
+<button class="mapa-search-clear" onclick="document.getElementById('mapa-search-fs').value='';document.getElementById('mapa-search-results-fs').classList.remove('show');document.getElementById('mapa-search-float').style.display='none'">✕</button>
+<div class="mapa-search-results" id="mapa-search-results-fs"></div>
+</div>
+</div>
 </div>
 
 <div id="page-ganadero" class="page">

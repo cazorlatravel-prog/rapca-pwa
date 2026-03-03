@@ -287,6 +287,7 @@ function initMapa(){
   }
   actualizarMarcadoresMapa();
   poblarFiltrosMapa();
+  construirCapaComparativas();
 }
 function poblarFiltrosMapa(){
   var rs=getRegistrosUsuario();
@@ -522,6 +523,132 @@ function centrarEnMiPosicion(){
   else{marcadorPosicion=L.marker([currentLat,currentLon],{icon:L.divIcon({className:'',html:'<div style="background:#3498db;width:16px;height:16px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 6px rgba(0,0,0,.4)"></div>',iconSize:[16,16],iconAnchor:[8,8]})}).addTo(mapaLeaflet).bindPopup('Mi posición');}
   mapaLeaflet.setView([currentLat,currentLon],16);
 }
+
+// --- Pantalla completa del mapa ---
+var mapaFullscreen=false;
+function toggleMapaFullscreen(){
+  mapaFullscreen=!mapaFullscreen;
+  if(mapaFullscreen){
+    document.body.classList.add('mapa-fullscreen');
+    // Sync filtro tipo
+    var fs=document.getElementById('mapa-filtro-tipo-fs');
+    if(fs)fs.value=document.getElementById('mapa-filtro-tipo')?document.getElementById('mapa-filtro-tipo').value:'';
+  }else{
+    document.body.classList.remove('mapa-fullscreen');
+    document.getElementById('mapa-search-float').style.display='none';
+  }
+  // Leaflet necesita recalcular tamaño
+  setTimeout(function(){if(mapaLeaflet)mapaLeaflet.invalidateSize();},100);
+}
+function toggleMapaSearchFS(){
+  var el=document.getElementById('mapa-search-float');
+  if(el.style.display==='block'){el.style.display='none';}
+  else{el.style.display='block';document.getElementById('mapa-search-fs').focus();}
+}
+
+// --- Capa de puntos comparativos y buscador ---
+var capaComparativas=null;
+var puntosComparativos=[];
+
+function construirCapaComparativas(){
+  // Recopilar todos los puntos comparativos de todos los registros
+  puntosComparativos=[];
+  var rs=getRegistrosUsuario();
+  rs.forEach(function(r){
+    if(!r.lat||!r.lon)return;
+    var d=r.datos||{};
+    if(!d.fotosComp)return;
+    d.fotosComp.forEach(function(fc){
+      if(!fc.numero||!fc.waypoint)return;
+      var codigos=fc.numero.split(',').map(function(x){return x.trim();}).filter(function(x){return x;});
+      if(codigos.length===0)return;
+      puntosComparativos.push({
+        lat:r.lat,lon:r.lon,
+        unidad:r.unidad||'--',
+        waypoint:fc.waypoint,
+        tipo:r.tipo,
+        fecha:r.fecha,
+        operador:r.operador_nombre||'',
+        codigos:codigos
+      });
+    });
+  });
+  // Crear capa de Leaflet
+  if(capaComparativas&&mapaLeaflet){
+    mapaLeaflet.removeLayer(capaComparativas);
+    if(controlCapas)controlCapas.removeLayer(capaComparativas);
+  }
+  if(!mapaLeaflet||puntosComparativos.length===0){capaComparativas=null;return;}
+  capaComparativas=L.featureGroup();
+  puntosComparativos.forEach(function(p){
+    var esW1=p.waypoint==='W1';
+    var color=esW1?'#e74c3c':'#9b59b6';
+    var label=p.waypoint;
+    var mk=L.marker([p.lat,p.lon],{icon:L.divIcon({className:'',html:'<div style="background:'+color+';width:26px;height:26px;border-radius:6px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:bold;color:#fff">'+label+'</div>',iconSize:[26,26],iconAnchor:[13,13]})});
+    mk.bindPopup('<b>'+p.unidad+' — '+p.waypoint+'</b><br>'+p.tipo+' | '+p.fecha+(p.operador?'<br>'+p.operador:'')+'<br><small>Fotos: '+p.codigos.join(', ')+'</small>');
+    capaComparativas.addLayer(mk);
+  });
+  capaComparativas.addTo(mapaLeaflet);
+  if(controlCapas)controlCapas.addOverlay(capaComparativas,'Fotos Comparativas (W1/W2)');
+}
+
+function buscarEnMapa(query,resultsId){
+  var container=document.getElementById(resultsId);
+  if(!container)return;
+  if(!query||query.length<1){container.classList.remove('show');container.innerHTML='';return;}
+  query=query.toLowerCase();
+  var resultados=[];
+  // Buscar en puntos comparativos
+  puntosComparativos.forEach(function(p){
+    var texto=(p.unidad+' '+p.waypoint+' '+p.tipo+' '+p.fecha+' '+p.operador).toLowerCase();
+    if(texto.indexOf(query)!==-1){
+      resultados.push({tipo:'comp',label:p.unidad+' — '+p.waypoint,sub:p.tipo+' | '+p.fecha+(p.operador?' | '+p.operador:''),lat:p.lat,lon:p.lon,color:p.waypoint==='W1'?'#e74c3c':'#9b59b6',icon:p.waypoint});
+    }
+  });
+  // Buscar en registros con coordenadas
+  var rs=getRegistrosUsuario();
+  rs.forEach(function(r){
+    if(!r.lat||!r.lon)return;
+    var texto=(r.unidad+' '+r.tipo+' '+r.fecha+' '+(r.operador_nombre||'')+' '+(r.zona||'')).toLowerCase();
+    if(texto.indexOf(query)!==-1){
+      var color=r.tipo==='VP'?'#88d8b0':r.tipo==='EL'?'#2ecc71':'#fd9853';
+      resultados.push({tipo:'reg',label:r.tipo+' '+r.unidad,sub:r.fecha+(r.operador_nombre?' | '+r.operador_nombre:''),lat:r.lat,lon:r.lon,color:color,icon:r.tipo});
+    }
+  });
+  // Buscar en infraestructuras con coordenadas
+  var infras=getInfras();
+  infras.forEach(function(inf){
+    if(!inf.lat||!inf.lon)return;
+    var texto=((inf.idUnidad||'')+' '+(inf.nombre||'')+' '+(inf.municipio||'')+' '+(inf.provincia||'')).toLowerCase();
+    if(texto.indexOf(query)!==-1){
+      resultados.push({tipo:'infra',label:inf.idUnidad||'--',sub:(inf.nombre||'')+(inf.municipio?' | '+inf.municipio:''),lat:parseFloat(inf.lat),lon:parseFloat(inf.lon),color:'#8e44ad',icon:'INF'});
+    }
+  });
+  // Limitar a 20 resultados
+  resultados=resultados.slice(0,20);
+  if(resultados.length===0){container.classList.remove('show');container.innerHTML='';return;}
+  var html='';
+  resultados.forEach(function(r,idx){
+    html+='<div class="mapa-search-result" onclick="irAPuntoMapa('+r.lat+','+r.lon+',\''+resultsId+'\')">';
+    html+='<div class="sr-icon" style="background:'+r.color+'">'+r.icon+'</div>';
+    html+='<div class="sr-info"><div class="sr-title">'+r.label+'</div><div class="sr-sub">'+r.sub+'</div></div>';
+    html+='</div>';
+  });
+  container.innerHTML=html;
+  container.classList.add('show');
+}
+
+function irAPuntoMapa(lat,lon,resultsId){
+  if(!mapaLeaflet)initMapa();
+  mapaLeaflet.setView([lat,lon],17);
+  // Cerrar resultados
+  var container=document.getElementById(resultsId);
+  if(container)container.classList.remove('show');
+  // Flash visual en el punto
+  var flash=L.circleMarker([lat,lon],{radius:20,color:'#3498db',fillColor:'#3498db',fillOpacity:0.3,weight:3}).addTo(mapaLeaflet);
+  setTimeout(function(){mapaLeaflet.removeLayer(flash);},2000);
+}
+
 function guardarCapasKMLLocal(){
   try{localStorage.setItem('rapca_kml_capas',JSON.stringify(capasKMLRaw));}catch(e){console.warn('KML demasiado grande para localStorage');}
 }
@@ -947,7 +1074,7 @@ function initApp(){
   var cVP=localStorage.getItem('rapca_contadores_VP'),cEI=localStorage.getItem('rapca_contadores_EI'),cEV=localStorage.getItem('rapca_contadores_EV'),cEL=localStorage.getItem('rapca_contadores_EL');if(cVP)contadorFotosVP=JSON.parse(cVP);if(cEI)contadorFotosEV=JSON.parse(cEI);else if(cEV)contadorFotosEV=JSON.parse(cEV);if(cEL)contadorFotosEL=JSON.parse(cEL);
   generarPlantas();generarPalatables();generarHerbaceas();updateSyncStatus();updatePendingCount();loadPanel();cargarBorradores();iniciarGeolocalizacion();initPreviewListeners();initCamposExtra();
   window.addEventListener('online',function(){isOnline=true;updateSyncStatus();procesarSubidasPendientes();});window.addEventListener('offline',function(){isOnline=false;updateSyncStatus();});
-  document.addEventListener('click',function(e){if(!e.target.closest('.autocomplete-wrapper'))document.querySelectorAll('.autocomplete-list').forEach(function(l){l.classList.remove('show');});});
+  document.addEventListener('click',function(e){if(!e.target.closest('.autocomplete-wrapper'))document.querySelectorAll('.autocomplete-list').forEach(function(l){l.classList.remove('show');});if(!e.target.closest('.mapa-search-bar')&&!e.target.closest('.mapa-search-float')){document.querySelectorAll('.mapa-search-results').forEach(function(r){r.classList.remove('show');});}});
   if(window.matchMedia('(display-mode: standalone)').matches){var b=document.getElementById('installBtn');if(b)b.style.display='none';}
   // Cargar listas de admin si es admin
   if(sesionActual&&sesionActual.rol==='admin'&&isOnline){cargarListaUsuarios();}
@@ -987,8 +1114,8 @@ function guardarVP(){var z=document.getElementById('vp-zona').value.trim(),u=doc
 function guardarEV(){var z=document.getElementById('ev-zona').value.trim(),u=document.getElementById('ev-unidad').value.trim();if(!z||!u){showToast('Zona y Unidad obligatorios','error');return;}var pl=[];for(var i=1;i<=10;i++){var nt=[],c=0,s=0;for(var n=1;n<=10;n++){var v=document.getElementById('ev-planta'+i+'-n'+n).value;nt.push(v);if(v!==''){c++;s+=parseInt(v);}}pl.push({nombre:document.getElementById('ev-planta'+i).value,notas:nt,media:c>0?(s/c).toFixed(2):''});}var pa=[],paTC=0,paTS=0;for(var i=1;i<=3;i++){var nt=[],c=0,s=0;for(var n=1;n<=15;n++){var v=document.getElementById('ev-palatable'+i+'-n'+n).value;nt.push(v);if(v!==''){c++;s+=parseInt(v);paTC++;paTS+=parseInt(v);}}pa.push({nombre:document.getElementById('ev-palatable'+i).value,notas:nt,media:c>0?(s/c).toFixed(2):''});}var hb=[];for(var i=1;i<=7;i++)hb.push(document.getElementById('ev-herb'+i).value);var c1=parseFloat(document.getElementById('ev-mat1cob').value)||0,c2=parseFloat(document.getElementById('ev-mat2cob').value)||0,a1=parseFloat(document.getElementById('ev-mat1alt').value)||0,a2=parseFloat(document.getElementById('ev-mat2alt').value)||0;var nC=(document.getElementById('ev-mat1cob').value!==''?1:0)+(document.getElementById('ev-mat2cob').value!==''?1:0),nA=(document.getElementById('ev-mat1alt').value!==''?1:0)+(document.getElementById('ev-mat2alt').value!==''?1:0);var mediaCob=nC>0?((c1+c2)/nC).toFixed(1):'',mediaAlt=nA>0?((a1+a2)/nA).toFixed(1):'',volumen=calcularVolumenMatorral(parseFloat(mediaCob),parseFloat(mediaAlt))||'';var pC=0,pS=0;for(var i=1;i<=10;i++)for(var n=1;n<=10;n++){var v=document.getElementById('ev-planta'+i+'-n'+n).value;if(v!==''){pC++;pS+=parseInt(v);}}var hC=0,hS=0;for(var i=1;i<=7;i++){var v=document.getElementById('ev-herb'+i).value;if(v!==''){hC++;hS+=parseInt(v);}}var d={plantas:pl,plantasMedia:pC>0?(pS/pC).toFixed(2):'',palatables:pa,palatablesMedia:paTC>0?(paTS/paTC).toFixed(2):'',pastoreo:[document.getElementById('ev-past1').value,document.getElementById('ev-past2').value,document.getElementById('ev-past3').value],herbaceas:hb,herbaceasMedia:hC>0?(hS/hC).toFixed(2):'',matorral:{punto1:{cobertura:document.getElementById('ev-mat1cob').value,altura:document.getElementById('ev-mat1alt').value,especie:document.getElementById('ev-mat1esp').value},punto2:{cobertura:document.getElementById('ev-mat2cob').value,altura:document.getElementById('ev-mat2alt').value,especie:document.getElementById('ev-mat2esp').value},mediaCob:mediaCob,mediaAlt:mediaAlt,volumen:volumen},fotos:document.getElementById('ev-fotos').value,fotosComp:[{numero:document.getElementById('ev-fc1').value,waypoint:'W1'},{numero:document.getElementById('ev-fc2').value,waypoint:'W2'}],observaciones:document.getElementById('ev-obs').value};var r={id:editandoId||Date.now(),tipo:'EI',fecha:document.getElementById('ev-fecha').value,zona:z,unidad:u,transecto:'T'+transectoActual,datos:d,enviado:false,lat:currentLat,lon:currentLon};if(sesionActual){r.operador_email=sesionActual.email;r.operador_nombre=sesionActual.nombre;}if(editandoId){actualizarRegistro(r);editandoId=null;}else guardarLocal(r);showToast('EI T'+transectoActual+' guardado','success');if(transectoActual>=3){limpiarFormularioEV(true);showToast('Unidad completada','info');}else{limpiarFormularioEV(false);setTransecto(transectoActual+1);}if(isOnline){enviarRegistro(r);sincronizarRegistroServidor(r);}}
 function getRegistros(){var d=localStorage.getItem('rapca_registros');return d?JSON.parse(d):[];}
 function getRegistrosUsuario(){var rs=getRegistros();if(sesionActual&&sesionActual.rol!=='admin'){rs=rs.filter(function(r){return r.operador_email===sesionActual.email;});}return rs;}
-function guardarLocal(r){var rs=getRegistros();rs.push(r);localStorage.setItem('rapca_registros',JSON.stringify(rs));updatePendingCount();}
-function actualizarRegistro(r){var rs=getRegistros();for(var i=0;i<rs.length;i++)if(rs[i].id===r.id){rs[i]=r;break;}localStorage.setItem('rapca_registros',JSON.stringify(rs));updatePendingCount();loadPanel();}
+function guardarLocal(r){var rs=getRegistros();rs.push(r);localStorage.setItem('rapca_registros',JSON.stringify(rs));updatePendingCount();if(mapaLeaflet)construirCapaComparativas();}
+function actualizarRegistro(r){var rs=getRegistros();for(var i=0;i<rs.length;i++)if(rs[i].id===r.id){rs[i]=r;break;}localStorage.setItem('rapca_registros',JSON.stringify(rs));updatePendingCount();loadPanel();if(mapaLeaflet)construirCapaComparativas();}
 function marcarEnviado(id){var rs=getRegistros();for(var i=0;i<rs.length;i++)if(rs[i].id===id){rs[i].enviado=true;break;}localStorage.setItem('rapca_registros',JSON.stringify(rs));updatePendingCount();loadPanel();}
 function updatePendingCount(){var rs=getRegistrosUsuario(),p=rs.filter(function(x){return!x.enviado;}).length;document.getElementById('pendingCount').textContent=p;var b=document.getElementById('pendingBadge');b.style.display=p>0?'inline':'none';b.textContent=p;}
 function enviarRegistro(r){showLoading(true);var fd=new URLSearchParams();fd.append(ENTRY.tipo,r.tipo);fd.append(ENTRY.fecha,r.fecha);fd.append(ENTRY.zona,r.zona);fd.append(ENTRY.unidad,r.unidad);fd.append(ENTRY.transecto,r.transecto||'');fd.append(ENTRY.datos,JSON.stringify(r.datos));fetch(FORM_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:fd.toString()}).then(function(){showLoading(false);marcarEnviado(r.id);showToast('Enviado','success');}).catch(function(){showLoading(false);showToast('Guardado local','info');});}
@@ -1352,7 +1479,7 @@ function exportarExcel(){
 var filtroBusqueda='';
 document.addEventListener('keydown',function(e){
   if((e.ctrlKey||e.metaKey)&&e.key==='k'){e.preventDefault();abrirBusqueda();}
-  if(e.key==='Escape'){cerrarBusqueda();}
+  if(e.key==='Escape'){if(mapaFullscreen){toggleMapaFullscreen();}else{cerrarBusqueda();}}
 });
 function abrirBusqueda(){
   document.getElementById('searchOverlay').classList.add('show');
