@@ -433,13 +433,13 @@ function abrirCamara(tipo,subtipo){
   camaraTipo=tipo;camaraSubtipo=subtipo;
   var num=getNextFotoNum(unidad,tipo,subtipo),codigo=generarCodigoFoto(unidad,tipo,subtipo,num);
   document.getElementById('cameraInfo').textContent=codigo;document.getElementById('overlayCode').textContent=codigo;
-  document.getElementById('overlayCoords').textContent=currentUTM?currentUTM.zone+currentUTM.band+' '+currentUTM.easting+' '+currentUTM.northing:'GPS...';
+  document.getElementById('overlayCoords').textContent=currentLat?currentLat.toFixed(6)+', '+currentLon.toFixed(6):'GPS...';
   precargarMapTiles();
   if(currentLat&&currentLon){var url='https://www.openstreetmap.org/export/embed.html?bbox='+(currentLon-0.0015)+','+(currentLat-0.001)+','+(currentLon+0.0015)+','+(currentLat+0.001)+'&layer=mapnik&marker='+currentLat+','+currentLon;document.getElementById('mapContainer').innerHTML='<iframe src="'+url+'" style="width:140%;height:140%;border:0;pointer-events:none;margin:-20% 0 0 -20%"></iframe>';}
   document.getElementById('cameraModal').classList.add('show');
   navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1920},height:{ideal:1080}}}).then(function(s){cameraStream=s;document.getElementById('cameraVideo').srcObject=s;actualizarBrujula();}).catch(function(){showToast('Error cámara','error');cerrarCamara();});
 }
-function actualizarBrujula(){if(document.getElementById('cameraModal').classList.contains('show')){var d=['N','NE','E','SE','S','SO','O','NO'],i=Math.round(currentHeading/45)%8;document.getElementById('overlayCompass').textContent=d[i]+' '+currentHeading+'°';if(currentUTM)document.getElementById('overlayCoords').textContent=currentUTM.zone+currentUTM.band+' '+currentUTM.easting+' '+currentUTM.northing;requestAnimationFrame(actualizarBrujula);}}
+function actualizarBrujula(){if(document.getElementById('cameraModal').classList.contains('show')){var d=['N','NE','E','SE','S','SO','O','NO'],i=Math.round(currentHeading/45)%8;document.getElementById('overlayCompass').textContent=d[i]+' '+currentHeading+'°';if(currentLat)document.getElementById('overlayCoords').textContent=currentLat.toFixed(6)+', '+currentLon.toFixed(6);requestAnimationFrame(actualizarBrujula);}}
 function cerrarCamara(){document.getElementById('cameraModal').classList.remove('show');if(cameraStream){cameraStream.getTracks().forEach(function(t){t.stop();});cameraStream=null;}var u=(camaraTipo==='VP')?document.getElementById('vp-unidad').value.trim():document.getElementById('ev-unidad').value.trim(),c=(camaraTipo==='VP')?contadorFotosVP:contadorFotosEV,k=getContadorKey(u,camaraTipo,camaraSubtipo);if(c[k]&&c[k]>0)c[k]--;localStorage.setItem('rapca_contadores_'+camaraTipo,JSON.stringify(c));}
 
 function dibujarMapaEnCanvas(ctx,x,y,w,h){
@@ -468,7 +468,7 @@ function capturarFoto(){
   var mapW=714,mapH=969,mapX=30,mapY=h-mapH-30;
   ctx.fillStyle='#fff';ctx.beginPath();ctx.roundRect(mapX,mapY,mapW,mapH,20);ctx.fill();ctx.strokeStyle='#333';ctx.lineWidth=4;ctx.beginPath();ctx.roundRect(mapX,mapY,mapW,mapH,20);ctx.stroke();
   dibujarMapaEnCanvas(ctx,mapX+8,mapY+8,mapW-16,mapH-16);
-  var codigo=document.getElementById('overlayCode').textContent,latlon=currentLat?currentLat.toFixed(4)+'N '+Math.abs(currentLon).toFixed(4)+'W':'--';
+  var codigo=document.getElementById('overlayCode').textContent,latlon=currentLat?currentLat.toFixed(6)+', '+currentLon.toFixed(6):'--';
   var fechaHoy=new Date(),fechaStr=fechaHoy.getDate().toString().padStart(2,'0')+'/'+(fechaHoy.getMonth()+1).toString().padStart(2,'0')+'/'+fechaHoy.getFullYear();
   ctx.textAlign='right';var textX=w-50,textY=h-450;
   ctx.shadowColor='rgba(0,0,0,0.8)';ctx.shadowBlur=10;ctx.shadowOffsetX=4;ctx.shadowOffsetY=4;
