@@ -1,8 +1,11 @@
-const CACHE_NAME = 'rapca-v17';
+const CACHE_NAME = 'rapca-v22';
 const urlsToCache = [
   './',
   './index.html',
   './app.js',
+  './dashboard.js',
+  './timeline.js',
+  './comparador.js',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
