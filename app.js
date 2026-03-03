@@ -42,6 +42,21 @@ function initUsuariosLocal(){
     users.push({id:1,email:'rapcajaen@gmail.com',nombre:'Administrador',password:'Gallito9431%',rol:'admin',activo:1});
     guardarUsuariosLocal(users);
   }
+  // Migrar admin antiguo a nuevas credenciales
+  var oldAdmin=users.find(function(u){return u.email==='admin@rapca.com'&&u.rol==='admin';});
+  if(oldAdmin){
+    oldAdmin.email='rapcajaen@gmail.com';
+    oldAdmin.password='Gallito9431%';
+    oldAdmin.nombre='Administrador';
+    guardarUsuariosLocal(users);
+    console.log('Admin migrado a rapcajaen@gmail.com');
+  }
+  // Asegurar que existe el admin correcto
+  var adminOk=users.find(function(u){return u.email==='rapcajaen@gmail.com'&&u.rol==='admin';});
+  if(!adminOk){
+    users.push({id:1,email:'rapcajaen@gmail.com',nombre:'Administrador',password:'Gallito9431%',rol:'admin',activo:1});
+    guardarUsuariosLocal(users);
+  }
 }
 function loginLocal(email,password){
   var users=getUsuariosLocal();
