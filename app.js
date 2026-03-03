@@ -847,23 +847,48 @@ function toggleMapaSearchFS(){
 function abrirExportarMapaPDF(){
   var panel=document.getElementById('mapa-pdf-panel');
   var sel=document.getElementById('mapa-pdf-unidad');
-  // Poblar selector con unidades de infraestructuras
-  var infras=getInfras();
   var h='<option value="">Selecciona unidad...</option>';
-  infras.forEach(function(inf){
-    h+='<option value="'+inf.id+'">'+(inf.idUnidad||'--')+' — '+(inf.nombre||'Sin nombre')+'</option>';
+  // 1. Elementos de capas KML/KMZ cargadas
+  var yaIncluidas={};
+  Object.keys(capasKMLSubcapas).forEach(function(nombreCapa){
+    var subcapas=capasKMLSubcapas[nombreCapa]||[];
+    if(subcapas.length===0)return;
+    h+='<optgroup label="📂 '+nombreCapa+'">';
+    subcapas.forEach(function(sc,idx){
+      var scNombre=sc.nombre||('Elemento '+(idx+1));
+      h+='<option value="kml_'+nombreCapa+'_'+idx+'">'+scNombre+'</option>';
+      yaIncluidas[scNombre.toUpperCase()]=true;
+    });
+    h+='</optgroup>';
   });
-  // Añadir unidades de registros que no tengan infraestructura
+  // 2. Infraestructuras que no estén ya en KML
+  var infras=getInfras();
+  var infrasNoKML=infras.filter(function(inf){
+    return !yaIncluidas[(inf.idUnidad||'').toUpperCase()];
+  });
+  if(infrasNoKML.length>0){
+    h+='<optgroup label="🌳 Infraestructuras">';
+    infrasNoKML.forEach(function(inf){
+      h+='<option value="'+inf.id+'">'+(inf.idUnidad||'--')+' — '+(inf.nombre||'Sin nombre')+'</option>';
+    });
+    h+='</optgroup>';
+  }
+  // 3. Unidades de registros sin infraestructura ni KML
   var rs=getRegistrosUsuario();
-  var unidadesInfra={};
-  infras.forEach(function(inf){if(inf.idUnidad)unidadesInfra[inf.idUnidad.toUpperCase()]=true;});
+  var unidadesYa={};
+  infras.forEach(function(inf){if(inf.idUnidad)unidadesYa[inf.idUnidad.toUpperCase()]=true;});
+  Object.keys(yaIncluidas).forEach(function(k){unidadesYa[k]=true;});
   var unidadesSueltas={};
   rs.forEach(function(r){
-    if(r.unidad){var u=r.unidad.toUpperCase();if(!unidadesInfra[u]&&!unidadesSueltas[u]){unidadesSueltas[u]=r.unidad;}}
+    if(r.unidad){var u=r.unidad.toUpperCase();if(!unidadesYa[u]&&!unidadesSueltas[u]){unidadesSueltas[u]=r.unidad;}}
   });
-  Object.keys(unidadesSueltas).forEach(function(u){
-    h+='<option value="reg_'+u+'">'+unidadesSueltas[u]+' (solo registros)</option>';
-  });
+  if(Object.keys(unidadesSueltas).length>0){
+    h+='<optgroup label="📂 Solo registros">';
+    Object.keys(unidadesSueltas).forEach(function(u){
+      h+='<option value="reg_'+u+'">'+unidadesSueltas[u]+'</option>';
+    });
+    h+='</optgroup>';
+  }
   sel.innerHTML=h;
   panel.style.display='block';
 }
@@ -875,7 +900,35 @@ function exportarMapaUnidadPDF(){
 
   showLoading(true);
   var infra=null,unidadId='';
-  if(val.indexOf('reg_')===0){
+  var lat=null,lon=null;
+
+  if(val.indexOf('kml_')===0){
+    // Elemento de capa KML — extraer nombre de capa e índice
+    var parts=val.replace('kml_','');
+    var lastUnderscore=parts.lastIndexOf('_');
+    var nombreCapa=parts.substring(0,lastUnderscore);
+    var idx=parseInt(parts.substring(lastUnderscore+1));
+    var subcapas=capasKMLSubcapas[nombreCapa];
+    if(subcapas&&subcapas[idx]){
+      var sc=subcapas[idx];
+      unidadId=sc.nombre||('Elemento '+(idx+1));
+      // Intentar vincular con infraestructura existente
+      var infras=getInfras();
+      var nombreNorm=unidadId.trim().toUpperCase();
+      for(var i=0;i<infras.length;i++){
+        var idU=(infras[i].idUnidad||'').trim().toUpperCase();
+        if(idU&&(nombreNorm===idU||nombreNorm.indexOf(idU)!==-1||idU.indexOf(nombreNorm)!==-1)){
+          infra=infras[i];unidadId=infra.idUnidad;break;
+        }
+      }
+      // Obtener coordenadas del elemento KML
+      if(sc.lat&&sc.lon){lat=sc.lat;lon=sc.lon;}
+      else if(sc.layer){
+        if(sc.layer.getLatLng){var ll=sc.layer.getLatLng();lat=ll.lat;lon=ll.lng;}
+        else if(sc.layer.getBounds){try{var ct=sc.layer.getBounds().getCenter();lat=ct.lat;lon=ct.lng;}catch(e){}}
+      }
+    }
+  }else if(val.indexOf('reg_')===0){
     unidadId=val.replace('reg_','');
   }else{
     var infras=getInfras();
@@ -891,11 +944,11 @@ function exportarMapaUnidadPDF(){
   rs.forEach(function(r){if(r.tipo==='VP')vpCount++;else if(r.tipo==='EL')elCount++;else eiCount++;});
 
   // Centrar mapa en la unidad si tiene coordenadas
-  var lat=null,lon=null;
-  if(infra&&infra.lat&&infra.lon){lat=parseFloat(infra.lat);lon=parseFloat(infra.lon);}
-  else{
-    // Buscar coordenadas en los registros
-    for(var i=0;i<rs.length;i++){if(rs[i].lat&&rs[i].lon){lat=rs[i].lat;lon=rs[i].lon;break;}}
+  if(!lat&&!lon){
+    if(infra&&infra.lat&&infra.lon){lat=parseFloat(infra.lat);lon=parseFloat(infra.lon);}
+    else{
+      for(var i=0;i<rs.length;i++){if(rs[i].lat&&rs[i].lon){lat=rs[i].lat;lon=rs[i].lon;break;}}
+    }
   }
 
   if(lat&&lon&&mapaLeaflet){
