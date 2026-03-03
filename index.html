@@ -124,8 +124,30 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .camera-modal .camera-info{color:#fff;font-size:.9rem;text-align:center;max-width:120px}
 .nav-btn{font-size:.6rem;padding:8px 4px 6px;min-width:44px}
 #mapa{background:#e0e0e0}
-.capas-item{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:#f9f9f9;border-radius:6px;margin-bottom:5px;font-size:.85rem}
+.capas-item{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#f9f9f9;border-radius:6px;margin-bottom:5px;font-size:.85rem;flex-wrap:wrap;gap:4px}
 .capas-item button{background:#e74c3c;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:.75rem}
+.capas-item .capas-actions{display:flex;gap:4px;align-items:center}
+.capas-item .capas-actions .btn-asignar{background:#8e44ad;font-size:.7rem;padding:3px 8px}
+.capas-permisos{font-size:.7rem;color:#666;width:100%;margin-top:2px}
+.capas-permisos .badge-perm{display:inline-block;background:#e8e0f0;color:#8e44ad;padding:1px 6px;border-radius:10px;margin-right:3px;font-size:.65rem}
+.capas-permisos .badge-todos{background:#d4edda;color:#27ae60}
+.modal-capas-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:6000;align-items:center;justify-content:center}
+.modal-capas-overlay.active{display:flex}
+.modal-capas{background:#fff;border-radius:12px;width:92%;max-width:420px;max-height:80vh;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.3)}
+.modal-capas-header{background:#1a3d2e;color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center}
+.modal-capas-header h3{margin:0;font-size:1rem}
+.modal-capas-header button{background:none;border:none;color:#fff;font-size:1.2rem;cursor:pointer}
+.modal-capas-body{padding:14px 16px;overflow-y:auto;max-height:calc(80vh - 120px)}
+.modal-capas-body label{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;cursor:pointer;font-size:.85rem;border:1px solid #eee;margin-bottom:6px;transition:background .15s}
+.modal-capas-body label:hover{background:#f5f5f5}
+.modal-capas-body label.checked{background:#e8f5e9;border-color:#27ae60}
+.modal-capas-body input[type="checkbox"]{width:18px;height:18px;accent-color:#1a3d2e}
+.modal-capas-body .todos-check{border:2px solid #8e44ad;font-weight:bold}
+.modal-capas-body .todos-check.checked{background:#f3e5f5;border-color:#8e44ad}
+.modal-capas-footer{padding:10px 16px;border-top:1px solid #eee;display:flex;gap:8px;justify-content:flex-end}
+.modal-capas-footer button{padding:8px 20px;border:none;border-radius:6px;font-size:.85rem;font-weight:bold;cursor:pointer}
+.modal-capas-footer .btn-guardar{background:#27ae60;color:#fff}
+.modal-capas-footer .btn-cancelar{background:#eee;color:#333}
 .menu-btn.mapa{border-top-color:#3498db}
 /* Leaflet controles grandes para móvil */
 .leaflet-control-zoom a{width:44px!important;height:44px!important;line-height:44px!important;font-size:22px!important}
@@ -391,9 +413,9 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <div class="card" style="margin-bottom:10px">
 <h3 style="margin-bottom:10px;color:#1a3d2e">🗺️ Mapa de Visitas</h3>
 <div style="display:flex;gap:8px;flex-wrap:wrap">
-<label class="btn-camera" style="background:#3498db;color:#fff;margin:0;cursor:pointer;font-size:.85rem">📂 Cargar KML/KMZ<input type="file" id="kml-input" accept=".kml,.kmz" style="display:none" onchange="cargarArchivoMapa(this.files[0]);this.value=''"></label>
+<label class="btn-camera admin-only" style="background:#3498db;color:#fff;margin:0;cursor:pointer;font-size:.85rem">📂 Cargar KML/KMZ<input type="file" id="kml-input" accept=".kml,.kmz" style="display:none" onchange="cargarArchivoMapa(this.files[0]);this.value=''"></label>
 <button class="btn-camera" style="background:#e67e22;margin:0;font-size:.85rem" onclick="exportarKML()">📤 Exportar KML</button>
-<button class="btn-camera" style="background:#e74c3c;margin:0;font-size:.85rem" onclick="limpiarCapasMapa()">🗑️ Limpiar</button>
+<button class="btn-camera admin-only" style="background:#e74c3c;margin:0;font-size:.85rem" onclick="limpiarCapasMapa()">🗑️ Limpiar</button>
 <button class="btn-camera" style="background:#27ae60;margin:0;font-size:.85rem" onclick="centrarEnMiPosicion()">📍 Mi posición</button>
 <button class="btn-camera" style="background:#1a3d2e;margin:0;font-size:.85rem" onclick="toggleMapaFullscreen()">⛶ Pantalla completa</button>
 </div>
@@ -423,6 +445,15 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <input type="text" class="mapa-search-input" id="mapa-search-fs" placeholder="Buscar unidad, waypoint..." oninput="buscarEnMapa(this.value,'mapa-search-results-fs')" onfocus="if(this.value)buscarEnMapa(this.value,'mapa-search-results-fs')">
 <button class="mapa-search-clear" onclick="document.getElementById('mapa-search-fs').value='';document.getElementById('mapa-search-results-fs').classList.remove('show');document.getElementById('mapa-search-float').style.display='none'">✕</button>
 <div class="mapa-search-results" id="mapa-search-results-fs"></div>
+</div>
+</div>
+</div>
+<!-- Modal asignar operadores a capa KML -->
+<div class="modal-capas-overlay" id="modal-capas-perm">
+<div class="modal-capas">
+<div class="modal-capas-header"><h3 id="modal-capas-titulo">Asignar operadores</h3><button onclick="cerrarModalCapasPerm()">✕</button></div>
+<div class="modal-capas-body" id="modal-capas-body"></div>
+<div class="modal-capas-footer"><button class="btn-cancelar" onclick="cerrarModalCapasPerm()">Cancelar</button><button class="btn-guardar" onclick="guardarAsignacionCapa()">Guardar</button></div>
 </div>
 </div>
 </div>
