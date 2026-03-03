@@ -70,15 +70,17 @@ function initUsuariosLocal(){
 function loginLocal(email,password){
   var users=getUsuariosLocal();
   var emailNorm=email.trim().toLowerCase();
-  var user=users.find(function(u){return u.email.toLowerCase()===emailNorm&&u.password===password&&u.activo!==0;});
+  var passNorm=password.trim();
+  var user=users.find(function(u){return u.email.toLowerCase()===emailNorm&&(u.password===passNorm||u.password===password)&&u.activo!==0;});
   if(user)return{ok:true,token:'local_'+Date.now(),usuario:{email:user.email,nombre:user.nombre,rol:user.rol,id:user.id}};
   return{ok:false,error:'Email o contraseña incorrectos'};
 }
 function crearUsuarioLocal(email,nombre,password,rol){
   var users=getUsuariosLocal();
   var emailNorm=email.trim().toLowerCase();
+  var passNorm=password.trim();
   if(users.find(function(u){return u.email.toLowerCase()===emailNorm;}))return{ok:false,error:'Email ya existe'};
-  users.push({id:Date.now(),email:emailNorm,nombre:nombre,password:password,rol:rol||'operador',activo:1});
+  users.push({id:Date.now(),email:emailNorm,nombre:nombre,password:passNorm,rol:rol||'operador',activo:1});
   guardarUsuariosLocal(users);
   return{ok:true};
 }
@@ -885,7 +887,7 @@ function agregarFotoALista(c){var lId,iId,pre=(camaraTipo==='VP')?'vp':(camaraTi
 // --- Autenticación y Sesiones ---
 function iniciarSesion(){
   var email=document.getElementById('login-email').value.trim().toLowerCase();
-  var pass=document.getElementById('login-password').value;
+  var pass=document.getElementById('login-password').value.trim();
   if(!email||!pass){mostrarErrorLogin('Email y contraseña requeridos');return;}
   var btn=document.getElementById('btnLogin');btn.textContent='Entrando...';btn.disabled=true;
   // Intentar login local primero
@@ -906,6 +908,12 @@ function iniciarSesion(){
   .then(function(data){
     btn.textContent='Entrar';btn.disabled=false;
     if(data.ok){
+      // Guardar usuario en local para futuros logins offline
+      var users=getUsuariosLocal();
+      if(!users.find(function(u){return u.email.toLowerCase()===email;})){
+        users.push({id:data.usuario.id,email:email,nombre:data.usuario.nombre,password:pass,rol:data.usuario.rol,activo:1});
+        guardarUsuariosLocal(users);
+      }
       sesionActual={token:data.token,email:data.usuario.email,nombre:data.usuario.nombre,rol:data.usuario.rol,id:data.usuario.id};
       localStorage.setItem('rapca_sesion',JSON.stringify(sesionActual));
       ocultarLoginMostrarApp();
@@ -913,7 +921,7 @@ function iniciarSesion(){
   })
   .catch(function(e){
     btn.textContent='Entrar';btn.disabled=false;
-    mostrarErrorLogin('Email o contraseña incorrectos');
+    mostrarErrorLogin('Cuenta no encontrada en este dispositivo y sin conexión al servidor');
   });
 }
 function mostrarErrorLogin(msg){var el=document.getElementById('loginError');el.textContent=msg;el.classList.add('show');}
@@ -955,18 +963,25 @@ function crearUsuario(){
   if(!sesionActual||sesionActual.rol!=='admin')return;
   var email=document.getElementById('admin-nuevo-email').value.trim();
   var nombre=document.getElementById('admin-nuevo-nombre').value.trim();
-  var pass=document.getElementById('admin-nuevo-pass').value;
+  var pass=document.getElementById('admin-nuevo-pass').value.trim();
   var rol=document.getElementById('admin-nuevo-rol').value;
   if(!email||!nombre||!pass){showToast('Todos los campos son obligatorios','error');return;}
   // Guardar siempre en local
   var localResult=crearUsuarioLocal(email,nombre,pass,rol);
   if(!localResult.ok){showToast(localResult.error||'Error','error');return;}
   document.getElementById('admin-nuevo-email').value='';document.getElementById('admin-nuevo-nombre').value='';document.getElementById('admin-nuevo-pass').value='';
-  showToast('Usuario creado','success');
   cargarListaUsuarios();
   // Intentar sincronizar con servidor
   if(isOnline){
-    fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'crear_usuario',token:sesionActual.token,nuevo_email:email,nuevo_nombre:nombre,nuevo_password:pass,nuevo_rol:rol})}).catch(function(){});
+    fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'crear_usuario',token:sesionActual.token,nuevo_email:email,nuevo_nombre:nombre,nuevo_password:pass,nuevo_rol:rol})})
+    .then(function(r){return r.json();})
+    .then(function(data){
+      if(data.ok){showToast('Usuario creado y sincronizado con servidor','success');}
+      else{showToast('Usuario creado (solo local). Servidor: '+(data.error||'error'),'warning');}
+    })
+    .catch(function(){showToast('Usuario creado (solo en este dispositivo)','warning');});
+  }else{
+    showToast('Usuario creado (solo en este dispositivo, sin conexión)','warning');
   }
 }
 function cargarListaUsuarios(){
