@@ -1550,6 +1550,138 @@ function sincronizarRegistroServidor(registro){
   if(!sesionActual||!sesionActual.token||!isOnline)return;
   fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'guardar',token:sesionActual.token,registro:registro})}).catch(function(){});
 }
+// --- Sincronizar infraestructura al servidor ---
+function sincronizarInfraServidor(infra){
+  if(!sesionActual||!sesionActual.token||!isOnline)return;
+  fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'guardar_infra',token:sesionActual.token,infra:infra})}).catch(function(){});
+}
+
+// === SINCRONIZACIÓN BIDIRECCIONAL (servidor ↔ local) ===
+// Se ejecuta tras login exitoso para recuperar datos del servidor
+function sincronizarDesdeServidor(){
+  if(!sesionActual||!sesionActual.token||!isOnline)return;
+  console.log('Iniciando sincronización desde servidor...');
+  sincronizarRegistrosDesdeServidor();
+  sincronizarInfrasDesdeServidor();
+  // También subir registros locales no sincronizados
+  sincronizarRegistrosAlServidor();
+  sincronizarInfrasAlServidor();
+}
+
+// --- Cargar registros del servidor y mezclar con locales ---
+function sincronizarRegistrosDesdeServidor(){
+  if(!sesionActual||!sesionActual.token||!isOnline)return;
+  fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'listar',token:sesionActual.token})})
+  .then(function(r){return r.json();})
+  .then(function(data){
+    if(!data.ok||!data.registros)return;
+    var locales=getRegistros();
+    var idsLocales={};
+    locales.forEach(function(r){idsLocales[r.id]=true;});
+    var nuevos=0;
+    data.registros.forEach(function(rs){
+      var regId=parseInt(rs.registro_id)||rs.registro_id;
+      if(!idsLocales[regId]){
+        // Este registro no existe en local — añadirlo
+        var reg={id:regId,tipo:rs.tipo,fecha:rs.fecha,zona:rs.zona,unidad:rs.unidad,transecto:rs.transecto||'',datos:rs.datos||{},enviado:true,lat:rs.lat?parseFloat(rs.lat):null,lon:rs.lon?parseFloat(rs.lon):null,operador_email:rs.usuario_email||'',operador_nombre:rs.usuario_nombre||''};
+        locales.push(reg);
+        nuevos++;
+      }
+    });
+    if(nuevos>0){
+      localStorage.setItem('rapca_registros',JSON.stringify(locales));
+      updatePendingCount();loadPanel();
+      showToast('Recuperados '+nuevos+' registros del servidor','success');
+      console.log('Sincronización: '+nuevos+' registros nuevos del servidor');
+    }else{
+      console.log('Sincronización: registros al día');
+    }
+  })
+  .catch(function(e){console.error('Error sincronizando registros:',e);});
+}
+
+// --- Cargar infraestructuras del servidor y mezclar con locales ---
+function sincronizarInfrasDesdeServidor(){
+  if(!sesionActual||!sesionActual.token||!isOnline)return;
+  fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'listar_infras',token:sesionActual.token})})
+  .then(function(r){return r.json();})
+  .then(function(data){
+    if(!data.ok||!data.infras)return;
+    var locales=getInfras();
+    var idsLocales={};
+    locales.forEach(function(inf){idsLocales[inf.id]=true;});
+    var nuevas=0;
+    data.infras.forEach(function(si){
+      var infId=parseInt(si.infra_id)||si.infra_id;
+      if(!idsLocales[infId]){
+        var inf={id:infId,provincia:si.provincia||'',idZona:si.idZona||'',idUnidad:si.idUnidad||'',codInfoca:si.codInfoca||'',nombre:si.nombre||'',superficie:si.superficie||'',pagoMaximo:si.pagoMaximo||'',municipio:si.municipio||'',pn:si.pn||'',contrato:si.contrato||'',vegetacion:si.vegetacion||'',pendiente:si.pendiente||'',distancia:si.distancia||'',lat:si.lat||null,lon:si.lon||null,extras:si.extras||{}};
+        locales.push(inf);
+        nuevas++;
+      }
+    });
+    if(nuevas>0){
+      guardarInfras(locales);
+      showToast('Recuperadas '+nuevas+' infraestructuras del servidor','success');
+      console.log('Sincronización: '+nuevas+' infraestructuras nuevas del servidor');
+    }else{
+      console.log('Sincronización: infraestructuras al día');
+    }
+  })
+  .catch(function(e){console.error('Error sincronizando infraestructuras:',e);});
+}
+
+// --- Subir registros locales que el servidor no tiene ---
+function sincronizarRegistrosAlServidor(){
+  if(!sesionActual||!sesionActual.token||!isOnline)return;
+  var locales=getRegistros();
+  if(locales.length===0)return;
+  var enviados=0;
+  locales.forEach(function(r,idx){
+    setTimeout(function(){
+      fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'guardar',token:sesionActual.token,registro:r})})
+      .then(function(res){return res.json();})
+      .then(function(d){if(d.ok)enviados++;})
+      .catch(function(){});
+    },idx*200);
+  });
+}
+
+// --- Subir infraestructuras locales al servidor ---
+function sincronizarInfrasAlServidor(){
+  if(!sesionActual||!sesionActual.token||!isOnline)return;
+  var locales=getInfras();
+  if(locales.length===0)return;
+  fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'guardar_infras_lote',token:sesionActual.token,infras:locales})})
+  .then(function(r){return r.json();})
+  .then(function(d){if(d.ok)console.log('Infraestructuras subidas al servidor: '+d.guardadas);})
+  .catch(function(){});
+}
+
+// --- Sincronizar usuarios desde servidor (admin) ---
+function sincronizarUsuariosDesdeServidor(){
+  if(!sesionActual||!sesionActual.token||!isOnline)return;
+  if(sesionActual.rol!=='admin')return;
+  fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'listar_usuarios',token:sesionActual.token})})
+  .then(function(r){return r.json();})
+  .then(function(data){
+    if(!data.ok||!data.usuarios)return;
+    var locales=getUsuariosLocal();
+    var emailsLocales={};
+    locales.forEach(function(u){emailsLocales[u.email.toLowerCase()]=true;});
+    var nuevos=0;
+    data.usuarios.forEach(function(su){
+      if(!emailsLocales[su.email.toLowerCase()]){
+        locales.push({id:su.id,email:su.email,nombre:su.nombre,password:'',rol:su.rol,activo:su.activo});
+        nuevos++;
+      }
+    });
+    if(nuevos>0){
+      guardarUsuariosLocal(locales);
+      console.log('Sincronización: '+nuevos+' usuarios nuevos del servidor');
+    }
+  })
+  .catch(function(){});
+}
 
 document.addEventListener('DOMContentLoaded',function(){
   // Inicializar usuarios locales y migrar datos
@@ -1596,7 +1728,9 @@ function initApp(){
   document.addEventListener('click',function(e){if(!e.target.closest('.autocomplete-wrapper'))document.querySelectorAll('.autocomplete-list').forEach(function(l){l.classList.remove('show');});if(!e.target.closest('.mapa-search-bar')&&!e.target.closest('.mapa-search-float')){document.querySelectorAll('.mapa-search-results').forEach(function(r){r.classList.remove('show');});}});
   if(window.matchMedia('(display-mode: standalone)').matches){var b=document.getElementById('installBtn');if(b)b.style.display='none';}
   // Cargar listas de admin si es admin
-  if(sesionActual&&sesionActual.rol==='admin'&&isOnline){cargarListaUsuarios();}
+  if(sesionActual&&sesionActual.rol==='admin'&&isOnline){cargarListaUsuarios();sincronizarUsuariosDesdeServidor();}
+  // Sincronizar datos con el servidor (recuperar registros e infraestructuras)
+  sincronizarDesdeServidor();
 }
 
 function opcionesNota(){return'<option value="">-</option><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option>';}
@@ -1641,7 +1775,7 @@ function enviarRegistro(r){showLoading(true);var fd=new URLSearchParams();fd.app
 function syncPending(){var pend=getRegistrosUsuario().filter(function(r){return!r.enviado;});if(pend.length===0){showToast('Sin pendientes','info');return;}if(!isOnline){showToast('Sin conexión','error');return;}showLoading(true);var total=pend.length,env=0;pend.forEach(function(r,idx){setTimeout(function(){var fd=new URLSearchParams();fd.append(ENTRY.tipo,r.tipo);fd.append(ENTRY.fecha,r.fecha);fd.append(ENTRY.zona,r.zona);fd.append(ENTRY.unidad,r.unidad);fd.append(ENTRY.transecto,r.transecto||'');fd.append(ENTRY.datos,JSON.stringify(r.datos));fetch(FORM_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:fd.toString()}).then(function(){marcarEnviado(r.id);sincronizarRegistroServidor(r);env++;if(env===total){showLoading(false);showToast(total+' sincronizados','success');}}).catch(function(){env++;if(env===total)showLoading(false);});},idx*600);});}
 function loadPanel(){var rs=getRegistrosUsuario(),h='';if(rs.length===0)h='<p style="text-align:center;color:#888;padding:20px">No hay registros</p>';else rs.slice().reverse().forEach(function(r){var opInfo=r.operador_nombre?' | '+r.operador_nombre:'';var tipoCls=r.tipo==='VP'?'vp':r.tipo==='EL'?'el':'ei';h+='<div class="record-item"><span class="tipo '+tipoCls+'">'+r.tipo+'</span> <strong>'+r.zona+'>'+r.unidad+'</strong>'+(r.transecto?' ('+r.transecto+')':'')+'<div class="info">'+r.fecha+' | '+(r.enviado?'✅ Enviado':'⏳ Pendiente')+opInfo+'</div><div class="actions"><button class="btn-small edit" onclick="editarRegistro('+r.id+')">✏️</button><button class="btn-small pdf" onclick="exportarPDF('+r.id+')">📄</button><button class="btn-small delete" onclick="eliminarRegistro('+r.id+')">🗑️</button></div></div>';});document.getElementById('panelList').innerHTML=h;}
 function editarRegistro(id){var rs=getRegistros(),r=rs.find(function(x){return x.id===id;});if(!r)return;editandoId=id;if(r.tipo==='VP'||r.tipo==='EL'){var pre=(r.tipo==='VP')?'vp':'el';document.getElementById(pre+'-fecha').value=r.fecha;document.getElementById(pre+'-zona').value=r.zona;document.getElementById(pre+'-unidad').value=r.unidad;var d=r.datos;if(d.pastoreo){document.getElementById(pre+'-past1').value=d.pastoreo[0]||'';document.getElementById(pre+'-past2').value=d.pastoreo[1]||'';document.getElementById(pre+'-past3').value=d.pastoreo[2]||'';}if(d.observacionPastoreo){document.getElementById(pre+'-senal').value=d.observacionPastoreo.senal||'';document.getElementById(pre+'-veredas').value=d.observacionPastoreo.veredas||'';document.getElementById(pre+'-cagarrutas').value=d.observacionPastoreo.cagarrutas||'';}if(d.fotos){document.getElementById(pre+'-fotos').value=d.fotos;actualizarListaFotos(pre+'-fotos-lista',d.fotos);}var fc1Val=d.fotosComp&&d.fotosComp[0]?d.fotosComp[0].numero:'',fc2Val=d.fotosComp&&d.fotosComp[1]?d.fotosComp[1].numero:'';if(fc1Val){document.getElementById(pre+'-fc1').value=fc1Val;actualizarListaFotos(pre+'-fc1-lista',fc1Val);}if(fc2Val){document.getElementById(pre+'-fc2').value=fc2Val;actualizarListaFotos(pre+'-fc2-lista',fc2Val);}document.getElementById(pre+'-obs').value=d.observaciones||'';inicializarContadoresDesdeEdicion(r.tipo,d.fotos,fc1Val,fc2Val);showPage(r.tipo==='VP'?'vp':'el');showToast('Editando '+r.tipo,'info');}else{document.getElementById('ev-fecha').value=r.fecha;document.getElementById('ev-zona').value=r.zona;document.getElementById('ev-unidad').value=r.unidad;setTransecto(parseInt((r.transecto||'T1').replace('T',''))||1);var d=r.datos;if(d.plantas)for(var i=0;i<d.plantas.length&&i<10;i++){document.getElementById('ev-planta'+(i+1)).value=d.plantas[i].nombre||'';for(var n=0;n<d.plantas[i].notas.length&&n<10;n++)document.getElementById('ev-planta'+(i+1)+'-n'+(n+1)).value=d.plantas[i].notas[n]||'';}if(d.palatables)for(var i=0;i<d.palatables.length&&i<3;i++){document.getElementById('ev-palatable'+(i+1)).value=d.palatables[i].nombre||'';for(var n=0;n<d.palatables[i].notas.length&&n<15;n++)document.getElementById('ev-palatable'+(i+1)+'-n'+(n+1)).value=d.palatables[i].notas[n]||'';}if(d.pastoreo){document.getElementById('ev-past1').value=d.pastoreo[0]||'';document.getElementById('ev-past2').value=d.pastoreo[1]||'';document.getElementById('ev-past3').value=d.pastoreo[2]||'';}if(d.herbaceas)for(var i=0;i<7;i++)document.getElementById('ev-herb'+(i+1)).value=d.herbaceas[i]||'';if(d.matorral){document.getElementById('ev-mat1cob').value=d.matorral.punto1?d.matorral.punto1.cobertura:'';document.getElementById('ev-mat1alt').value=d.matorral.punto1?d.matorral.punto1.altura:'';document.getElementById('ev-mat1esp').value=d.matorral.punto1?d.matorral.punto1.especie:'';document.getElementById('ev-mat2cob').value=d.matorral.punto2?d.matorral.punto2.cobertura:'';document.getElementById('ev-mat2alt').value=d.matorral.punto2?d.matorral.punto2.altura:'';document.getElementById('ev-mat2esp').value=d.matorral.punto2?d.matorral.punto2.especie:'';}if(d.fotos){document.getElementById('ev-fotos').value=d.fotos;actualizarListaFotos('ev-fotos-lista',d.fotos);}var fc1Val=d.fotosComp&&d.fotosComp[0]?d.fotosComp[0].numero:'',fc2Val=d.fotosComp&&d.fotosComp[1]?d.fotosComp[1].numero:'';if(fc1Val){document.getElementById('ev-fc1').value=fc1Val;actualizarListaFotos('ev-fc1-lista',fc1Val);}if(fc2Val){document.getElementById('ev-fc2').value=fc2Val;actualizarListaFotos('ev-fc2-lista',fc2Val);}document.getElementById('ev-obs').value=d.observaciones||'';inicializarContadoresDesdeEdicion('EI',d.fotos,fc1Val,fc2Val);actualizarEstadisticasPlantas();actualizarEstadisticasPalatables();actualizarMediaHerbaceas();actualizarResumenMatorral();showPage('ev');showToast('Editando EI','info');}}
-function eliminarRegistro(id){if(confirm('¿Eliminar?')){localStorage.setItem('rapca_registros',JSON.stringify(getRegistros().filter(function(r){return r.id!==id;})));updatePendingCount();loadPanel();showToast('Eliminado','info');}}
+function eliminarRegistro(id){if(confirm('¿Eliminar?')){localStorage.setItem('rapca_registros',JSON.stringify(getRegistros().filter(function(r){return r.id!==id;})));updatePendingCount();loadPanel();showToast('Eliminado','info');if(sesionActual&&sesionActual.token&&isOnline){fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'eliminar',token:sesionActual.token,registro_id:id})}).catch(function(){});}}}
 function borrarTodo(){if(!confirm('¿Borrar TODO?'))return;if(sesionActual&&sesionActual.rol!=='admin'){var rs=getRegistros().filter(function(r){return r.operador_email!==sesionActual.email;});localStorage.setItem('rapca_registros',JSON.stringify(rs));}else{localStorage.removeItem('rapca_registros');}updatePendingCount();loadPanel();showToast('Borrados','info');}
 
 // Generar HTML con fotos reales
@@ -1859,6 +1993,7 @@ function guardarInfra(){
   if(editandoInfraId){for(var i=0;i<lista.length;i++)if(lista[i].id===editandoInfraId){lista[i]=r;break;}editandoInfraId=null;}
   else{lista.push(r);}
   guardarInfras(lista);showToast('Infraestructura guardada','success');limpiarFormInfra();cargarListaInfra();
+  sincronizarInfraServidor(r);
 }
 function limpiarFormInfra(){
   editandoInfraId=null;
@@ -1912,6 +2047,9 @@ function eliminarInfra(id){
   if(!confirm('¿Eliminar infraestructura?'))return;
   guardarInfras(getInfras().filter(function(r){return r.id!==id;}));
   cargarListaInfra();showToast('Eliminado','info');
+  if(sesionActual&&sesionActual.token&&isOnline){
+    fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'eliminar_infra',token:sesionActual.token,infra_id:id})}).catch(function(){});
+  }
 }
 function agregarCampoInfra(){
   var nombre=prompt('Nombre del nuevo campo:');
@@ -1968,6 +2106,7 @@ function importarExcel(file){
       localStorage.setItem('rapca_campos_infra',JSON.stringify(camposExtraInf));
       renderCamposExtraInf();cargarListaInfra();showLoading(false);
       showToast(nuevos+' nuevas, '+actualizados+' actualizadas','success');
+      sincronizarInfrasAlServidor();
     }catch(err){showLoading(false);showToast('Error: '+err.message,'error');console.error('Error importando Excel:',err);}
   };
   reader.readAsArrayBuffer(file);
