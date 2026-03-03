@@ -329,7 +329,7 @@ function actualizarMarcadoresMapa(){
     });
   }
 
-  // Marcadores de fotos comparativas (W1/W2) con icono de cámara
+  // Marcadores de fotos comparativas (W1/W2) con etiqueta visible
   if(filtroTipo!=='infra'){
     var allRs=getRegistrosUsuario();
     if(filtroTipo)allRs=allRs.filter(function(r){return r.tipo===filtroTipo;});
@@ -343,19 +343,19 @@ function actualizarMarcadoresMapa(){
         if(!fc.numero||!fc.waypoint)return;
         var codigos=fc.numero.split(',').map(function(x){return x.trim();}).filter(function(x){return x;});
         if(codigos.length===0)return;
-        var mk=L.marker([r.lat,r.lon],{icon:L.divIcon({className:'',html:'<div style="background:#e74c3c;width:18px;height:18px;border-radius:4px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:10px">📷</div>',iconSize:[18,18],iconAnchor:[9,9]})});
+        var labelText=r.unidad+' '+fc.waypoint;
+        var mk=L.marker([r.lat,r.lon],{icon:L.divIcon({className:'mapa-marker-label',html:'<div class="marker-dot marker-comp"></div><div class="marker-etiqueta marker-etiqueta-comp">'+labelText+'</div>',iconSize:[0,0],iconAnchor:[0,8]})});
         mk.bindPopup('<b>📷 '+fc.waypoint+' — '+r.unidad+'</b><br>'+r.fecha+'<br>Fotos: '+codigos.join(', '));
         clusterGroup.addLayer(mk);
       });
     });
   }
 
-  // Marcadores de infraestructuras
+  // Marcadores de infraestructuras con etiqueta ID Unidad visible
   if(!filtroTipo||filtroTipo==='infra'){
     var infras=getInfras();
     infras.forEach(function(inf){
       if(!inf.lat||!inf.lon)return;
-      // Calcular indicadores de estado
       var allRegs=getRegistrosUsuario();
       var vpCount=0,elCount=0,eiCount=0,fotoCount=0;
       allRegs.forEach(function(r){
@@ -366,8 +366,9 @@ function actualizarMarcadoresMapa(){
           if(dd.fotosComp)dd.fotosComp.forEach(function(fc){if(fc.numero)fotoCount+=fc.numero.split(',').filter(function(x){return x.trim();}).length;});
         }
       });
-      var mk=L.marker([parseFloat(inf.lat),parseFloat(inf.lon)],{icon:L.divIcon({className:'',html:'<div style="background:#8e44ad;width:14px;height:14px;border-radius:7px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',iconSize:[14,14],iconAnchor:[7,7]})});
-      mk.bindPopup('<b>'+(inf.idUnidad||'--')+'</b><br>'+(inf.nombre||'')+'<br>'+(inf.municipio||'')+'<br><small>VP: '+vpCount+' | EL: '+elCount+' | EI: '+eiCount+' | Fotos: '+fotoCount+'</small>');
+      var idLabel=inf.idUnidad||'--';
+      var mk=L.marker([parseFloat(inf.lat),parseFloat(inf.lon)],{icon:L.divIcon({className:'mapa-marker-label',html:'<div class="marker-dot marker-infra"></div><div class="marker-etiqueta marker-etiqueta-infra">'+idLabel+'</div>',iconSize:[0,0],iconAnchor:[0,8]})});
+      mk.bindPopup('<b>'+idLabel+'</b><br>'+(inf.nombre||'')+'<br>'+(inf.municipio||'')+'<br><small>VP: '+vpCount+' | EL: '+elCount+' | EI: '+eiCount+' | Fotos: '+fotoCount+'</small>');
       clusterGroup.addLayer(mk);
     });
   }
