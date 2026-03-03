@@ -1,4 +1,5 @@
 var FORM_URL='https://docs.google.com/forms/d/e/1FAIpQLSe8kPl5QErboQmrAJ6hSnbkiAJb3h9Mi6_Fntgws_Z1NWj1TQ/formResponse';
+var UPLOAD_URL='upload.php';
 var ENTRY={tipo:'entry.437432431',fecha:'entry.1468491774',zona:'entry.226003494',unidad:'entry.1028582203',transecto:'entry.1651846022',datos:'entry.1220105245'};
 var PLANTAS=['Arbutus unedo','Asparagus acutifolius','Chamaerops humilis','Cistus sp.','Crataegus monogyna','Cytisus sp.','Daphne gnidium','Dittrichia viscosa','Foeniculum vulgare','Genista sp.','Halimium sp.','Helichrysum stoechas','Juncus spp.','Juniperus sp.','Lavandula latifolia','Myrtus communis','Olea europaea var. sylvestris','Phillyrea angustifolia','Phlomis purpurea','Pistacia lentiscus','Quercus coccifera','Quercus ilex','Quercus sp.','Retama sphaerocarpa','Rhamnus sp.','Rosa sp.','Rosmarinus officinalis','Rubus ulmifolius','Salvia rosmarinus','Spartium junceum','Thymus sp.','Ulex sp.'];
 var transectoActual=1,isOnline=navigator.onLine,currentAutocomplete=null,editandoId=null;
@@ -13,14 +14,18 @@ var fotosCacheMemoria={}; // Cache en memoria como respaldo
 function initFotosDB(){
   return new Promise(function(resolve,reject){
     if(!window.indexedDB){console.warn('IndexedDB no soportada');resolve();return;}
-    var request=indexedDB.open('RAPCA_Fotos',1);
+    var request=indexedDB.open('RAPCA_Fotos',2);
     request.onerror=function(e){console.error('Error IndexedDB:',e);resolve();};
     request.onsuccess=function(e){fotosDB=e.target.result;console.log('IndexedDB lista');resolve();};
     request.onupgradeneeded=function(e){
       var db=e.target.result;
       if(!db.objectStoreNames.contains('fotos')){
         db.createObjectStore('fotos',{keyPath:'codigo'});
-        console.log('ObjectStore creado');
+        console.log('ObjectStore fotos creado');
+      }
+      if(!db.objectStoreNames.contains('subidas_pendientes')){
+        db.createObjectStore('subidas_pendientes',{keyPath:'codigo'});
+        console.log('ObjectStore subidas_pendientes creado');
       }
     };
   });
@@ -91,6 +96,37 @@ function limpiarFotosAntiguasDB(){
       }
     };
   }catch(e){console.error('Error limpieza:',e);}
+}
+
+// --- Subida de fotos a la nube (Cloudinary) ---
+function guardarSubidaPendiente(codigo,dataUrl,unidad,tipo){
+  if(!fotosDB)return;
+  try{var tx=fotosDB.transaction(['subidas_pendientes'],'readwrite');tx.objectStore('subidas_pendientes').put({codigo:codigo,data:dataUrl,unidad:unidad,tipo:tipo,fecha:Date.now()});tx.oncomplete=function(){actualizarContadorSubidas();};}catch(e){console.error('Error cola subida:',e);}
+}
+function eliminarSubidaPendiente(codigo){
+  if(!fotosDB)return;
+  try{var tx=fotosDB.transaction(['subidas_pendientes'],'readwrite');tx.objectStore('subidas_pendientes').delete(codigo);tx.oncomplete=function(){actualizarContadorSubidas();};}catch(e){}
+}
+function actualizarContadorSubidas(){
+  if(!fotosDB)return;
+  try{var tx=fotosDB.transaction(['subidas_pendientes'],'readonly');var req=tx.objectStore('subidas_pendientes').count();req.onsuccess=function(){var el=document.getElementById('uploadCount');if(el)el.textContent=req.result||0;};}catch(e){}
+}
+function procesarSubidasPendientes(){
+  if(!fotosDB||!isOnline)return;
+  try{
+    var tx=fotosDB.transaction(['subidas_pendientes'],'readonly');
+    var req=tx.objectStore('subidas_pendientes').getAll();
+    req.onsuccess=function(){
+      var p=req.result||[];
+      if(p.length===0)return;
+      showToast('☁️ Subiendo '+p.length+' fotos...','info');
+      p.forEach(function(item,i){setTimeout(function(){subirFotoNube(item.codigo,item.data,item.unidad,item.tipo);},i*1500);});
+    };
+  }catch(e){console.error('Error procesando subidas:',e);}
+}
+function subirFotoNube(codigo,dataUrl,unidad,tipo){
+  if(!isOnline)return;
+  fetch(UPLOAD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codigo:codigo,imagen:dataUrl,unidad:unidad,tipo:tipo})}).then(function(res){if(!res.ok)throw new Error('HTTP '+res.status);return res.json();}).then(function(data){if(data.ok){eliminarSubidaPendiente(codigo);showToast('☁️ '+codigo,'success');}else throw new Error(data.error||'Error');}).catch(function(err){console.error('Error subida '+codigo+':',err);});
 }
 
 window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();deferredPrompt=e;mostrarBotonInstalar();});
@@ -200,7 +236,15 @@ function capturarFoto(){
   canvas.toBlob(function(b){
     var l=document.createElement('a');l.href=URL.createObjectURL(b);l.download=codigo+'.jpg';l.click();
   },'image/jpeg',0.95);
-  
+
+  // Subir a la nube (resolución media para optimizar subida)
+  var upCanvas=document.createElement('canvas');upCanvas.width=1530;upCanvas.height=2040;
+  var upCtx=upCanvas.getContext('2d');upCtx.drawImage(canvas,0,0,finalW,finalH,0,0,1530,2040);
+  var upData=upCanvas.toDataURL('image/jpeg',0.85);
+  var upUnidad=(camaraTipo==='VP')?document.getElementById('vp-unidad').value.trim():document.getElementById('ev-unidad').value.trim();
+  guardarSubidaPendiente(codigo,upData,upUnidad,camaraTipo);
+  if(isOnline)subirFotoNube(codigo,upData,upUnidad,camaraTipo);
+
   agregarFotoALista(codigo);
   showToast('📷 '+codigo,'success');
   document.getElementById('cameraModal').classList.remove('show');
@@ -213,11 +257,13 @@ document.addEventListener('DOMContentLoaded',function(){
   initFotosDB().then(function(){
     console.log('DB iniciada, fotos en memoria:',Object.keys(fotosCacheMemoria).length);
     limpiarFotosAntiguasDB();
+    actualizarContadorSubidas();
+    procesarSubidasPendientes();
   });
   var t=new Date().toISOString().split('T')[0];document.getElementById('vp-fecha').value=t;document.getElementById('ev-fecha').value=t;
   var cVP=localStorage.getItem('rapca_contadores_VP'),cEV=localStorage.getItem('rapca_contadores_EV');if(cVP)contadorFotosVP=JSON.parse(cVP);if(cEV)contadorFotosEV=JSON.parse(cEV);
   generarPlantas();generarPalatables();generarHerbaceas();updateSyncStatus();updatePendingCount();loadPanel();cargarBorradores();iniciarGeolocalizacion();
-  window.addEventListener('online',function(){isOnline=true;updateSyncStatus();});window.addEventListener('offline',function(){isOnline=false;updateSyncStatus();});
+  window.addEventListener('online',function(){isOnline=true;updateSyncStatus();procesarSubidasPendientes();});window.addEventListener('offline',function(){isOnline=false;updateSyncStatus();});
   document.addEventListener('click',function(e){if(!e.target.closest('.autocomplete-wrapper'))document.querySelectorAll('.autocomplete-list').forEach(function(l){l.classList.remove('show');});});
   if(window.matchMedia('(display-mode: standalone)').matches){var b=document.getElementById('installBtn');if(b)b.style.display='none';}
 });
