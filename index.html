@@ -127,6 +127,18 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .sync-alert .alert-actions{display:flex;gap:6px;flex-shrink:0}
 .btn-retry{background:#ffc107;border:none;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:bold;color:#856404}
 .btn-dismiss{background:none;border:none;font-size:1.3rem;cursor:pointer;color:#856404;padding:4px}
+.preview-modal{position:fixed;top:0;left:0;right:0;bottom:0;background:#000;z-index:3500;display:none;flex-direction:column}
+.preview-modal.show{display:flex}
+.preview-container{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:none}
+.preview-container canvas{max-width:100%;max-height:100%}
+.preview-tools{background:#1a3d2e;padding:10px 15px;flex-shrink:0;display:none}
+.preview-tools.show{display:block}
+.preview-controls{background:#1a3d2e;display:flex;align-items:center;justify-content:space-around;padding:12px 10px;flex-shrink:0;gap:8px}
+.btn-preview{padding:14px 10px;border:none;border-radius:10px;font-size:.9rem;font-weight:bold;cursor:pointer;color:#fff;flex:1;text-align:center}
+.btn-preview.annotate{background:#3498db}
+.btn-preview.annotate.active{background:#e74c3c}
+.btn-preview.repeat{background:#e67e22}
+.btn-preview.accept{background:#27ae60}
 </style>
 </head>
 <body>
@@ -187,6 +199,15 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 </div>
 </div>
 <canvas id="photoCanvas" style="display:none"></canvas>
+<div class="preview-modal" id="previewModal">
+<div class="preview-container" id="previewContainer"><canvas id="previewCanvas"></canvas></div>
+<div class="preview-tools" id="previewTools">
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><label style="color:#fff;font-size:.8rem;white-space:nowrap">Tamaño:</label><input type="range" id="circleSize" min="80" max="600" value="200" oninput="document.getElementById('circleSizeLabel').textContent=this.value" style="flex:1"><span id="circleSizeLabel" style="color:#fff;font-size:.8rem;min-width:30px">200</span></div>
+<div style="display:flex;gap:8px"><input type="text" id="annotationText" placeholder="Descripción del punto..." maxlength="100" style="flex:1;padding:10px;border-radius:8px;border:none;font-size:.95rem"><button onclick="deshacerAnotacion()" style="background:#e74c3c;color:#fff;border:none;padding:10px 14px;border-radius:8px;font-size:.85rem;cursor:pointer;white-space:nowrap">↩</button></div>
+<p style="font-size:.75rem;color:#88d8b0;text-align:center;margin-top:6px">Toca la imagen para marcar puntos de interés</p>
+</div>
+<div class="preview-controls"><button class="btn-preview annotate" id="btnAnotar" onclick="toggleAnotacion()">🔴 Anotar</button><button class="btn-preview repeat" onclick="repetirFoto()">🔄 Repetir</button><button class="btn-preview accept" onclick="aceptarFoto()">✅ Aceptar</button></div>
+</div>
 
 <div class="loading" id="loading"><div class="spinner"></div></div>
 <div class="toast" id="toast"></div>

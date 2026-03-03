@@ -9,6 +9,7 @@ var currentLat=null,currentLon=null,currentUTM=null;
 var deferredPrompt=null,mapTilesLoaded=[];
 var mapaLeaflet=null,controlCapas=null,capasKML={},capasKMLRaw={},marcadorPosicion=null;
 var syncEnProgreso=false,syncStats={total:0,ok:0,fail:0},fallosSubida=[];
+var anotaciones=[],modoAnotacion=false;
 var fotosDB=null;
 var fotosCacheMemoria={}; // Cache en memoria como respaldo
 
@@ -457,38 +458,126 @@ function capturarFoto(){
   ctx.font='bold 95px Arial';ctx.fillText(latlon,textX,textY);
   ctx.shadowColor='transparent';ctx.shadowBlur=0;ctx.textAlign='left';
   
-  // Guardar miniatura PRIMERO (síncrono en memoria)
-  var thumbCanvas=document.createElement('canvas');
-  var thumbW=400,thumbH=533;
-  thumbCanvas.width=thumbW;thumbCanvas.height=thumbH;
-  var thumbCtx=thumbCanvas.getContext('2d');
-  thumbCtx.drawImage(canvas,0,0,finalW,finalH,0,0,thumbW,thumbH);
-  var thumbDataUrl=thumbCanvas.toDataURL('image/jpeg',0.50);
-  
-  // Guardar en memoria inmediatamente
-  fotosCacheMemoria[codigo]=thumbDataUrl;
-  console.log('Foto en memoria:',codigo,'Total:',Object.keys(fotosCacheMemoria).length);
-  
-  // Guardar en IndexedDB (async)
-  guardarFotoEnDB(codigo,thumbDataUrl);
-  
-  // Guardar foto para descarga (alta calidad)
-  canvas.toBlob(function(b){
-    var l=document.createElement('a');l.href=URL.createObjectURL(b);l.download=codigo+'.jpg';l.click();
-  },'image/jpeg',0.95);
+  // Mostrar vista previa con opciones de anotar, repetir o aceptar
+  mostrarVistaPrevia();
+}
 
-  // Subir a la nube (resolución media para optimizar subida)
+// --- Vista Previa y Anotaciones en Foto ---
+function mostrarVistaPrevia(){
+  document.getElementById('cameraModal').classList.remove('show');
+  anotaciones=[];modoAnotacion=false;
+  document.getElementById('previewTools').classList.remove('show');
+  var btn=document.getElementById('btnAnotar');btn.textContent='🔴 Anotar';btn.classList.remove('active');
+  document.querySelector('.btn-preview.accept').textContent='✅ Aceptar';
+  document.getElementById('previewModal').classList.add('show');
+  requestAnimationFrame(function(){requestAnimationFrame(function(){dibujarVistaPrevia();});});
+}
+function dibujarVistaPrevia(){
+  var src=document.getElementById('photoCanvas');
+  var prev=document.getElementById('previewCanvas');
+  var container=document.getElementById('previewContainer');
+  var cW=container.clientWidth||300,cH=container.clientHeight||400;
+  var aspect=3/4,pW,pH;
+  if(cW/cH>aspect){pH=cH;pW=Math.round(pH*aspect);}
+  else{pW=cW;pH=Math.round(pW/aspect);}
+  prev.width=pW;prev.height=pH;
+  var ctx=prev.getContext('2d');
+  ctx.drawImage(src,0,0,3060,4080,0,0,pW,pH);
+  var s=pW/3060;
+  for(var i=0;i<anotaciones.length;i++){
+    var a=anotaciones[i],ax=a.x*s,ay=a.y*s,ar=a.radio*s;
+    ctx.strokeStyle='#FF0000';ctx.lineWidth=Math.max(2,ar*0.1);
+    ctx.beginPath();ctx.arc(ax,ay,ar,0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle='rgba(255,0,0,0.15)';ctx.fill();
+    ctx.fillStyle='#FF0000';ctx.font='bold '+Math.max(12,Math.round(ar*0.6))+'px Arial';
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(''+(i+1),ax,ay);
+  }
+  ctx.textAlign='left';ctx.textBaseline='alphabetic';
+  var btnA=document.querySelector('.btn-preview.accept');
+  if(btnA)btnA.textContent=anotaciones.length>0?'✅ Aceptar ('+anotaciones.length+')':'✅ Aceptar';
+}
+function toggleAnotacion(){
+  modoAnotacion=!modoAnotacion;
+  var btn=document.getElementById('btnAnotar'),tools=document.getElementById('previewTools');
+  if(modoAnotacion){btn.textContent='✖ Cerrar';btn.classList.add('active');tools.classList.add('show');}
+  else{btn.textContent='🔴 Anotar';btn.classList.remove('active');tools.classList.remove('show');}
+  requestAnimationFrame(function(){dibujarVistaPrevia();});
+}
+function deshacerAnotacion(){
+  if(anotaciones.length===0){showToast('Sin anotaciones','info');return;}
+  anotaciones.pop();dibujarVistaPrevia();showToast('Anotación eliminada','info');
+}
+function repetirFoto(){
+  document.getElementById('previewModal').classList.remove('show');
+  anotaciones=[];modoAnotacion=false;
+  document.getElementById('cameraModal').classList.add('show');
+  if(cameraStream){actualizarBrujula();}
+  else{navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1920},height:{ideal:1080}}}).then(function(s){cameraStream=s;document.getElementById('cameraVideo').srcObject=s;actualizarBrujula();}).catch(function(){showToast('Error cámara','error');cerrarCamara();});}
+}
+function aceptarFoto(){
+  var canvas=document.getElementById('photoCanvas'),ctx=canvas.getContext('2d');
+  var codigo=document.getElementById('overlayCode').textContent;
+  if(anotaciones.length>0)dibujarAnotacionesEnCanvas(ctx,canvas.width,canvas.height);
+  document.getElementById('previewModal').classList.remove('show');
+  if(cameraStream){cameraStream.getTracks().forEach(function(t){t.stop();});cameraStream=null;}
+  var thumbCanvas=document.createElement('canvas'),thumbW=400,thumbH=533;
+  thumbCanvas.width=thumbW;thumbCanvas.height=thumbH;
+  thumbCanvas.getContext('2d').drawImage(canvas,0,0,3060,4080,0,0,thumbW,thumbH);
+  var thumbDataUrl=thumbCanvas.toDataURL('image/jpeg',0.50);
+  fotosCacheMemoria[codigo]=thumbDataUrl;
+  guardarFotoEnDB(codigo,thumbDataUrl);
+  canvas.toBlob(function(b){var l=document.createElement('a');l.href=URL.createObjectURL(b);l.download=codigo+'.jpg';l.click();},'image/jpeg',0.95);
   var upCanvas=document.createElement('canvas');upCanvas.width=1530;upCanvas.height=2040;
-  var upCtx=upCanvas.getContext('2d');upCtx.drawImage(canvas,0,0,finalW,finalH,0,0,1530,2040);
+  upCanvas.getContext('2d').drawImage(canvas,0,0,3060,4080,0,0,1530,2040);
   var upData=upCanvas.toDataURL('image/jpeg',0.85);
   var upUnidad=(camaraTipo==='VP')?document.getElementById('vp-unidad').value.trim():document.getElementById('ev-unidad').value.trim();
   guardarSubidaPendiente(codigo,upData,upUnidad,camaraTipo);
   if(isOnline)subirFotoNube(codigo,upData,upUnidad,camaraTipo);
-
   agregarFotoALista(codigo);
   showToast(isOnline?'📷☁️ '+codigo:'📷 '+codigo+' (offline)','success');
-  document.getElementById('cameraModal').classList.remove('show');
-  if(cameraStream){cameraStream.getTracks().forEach(function(t){t.stop();});cameraStream=null;}
+  anotaciones=[];modoAnotacion=false;
+}
+function dibujarAnotacionesEnCanvas(ctx,w,h){
+  for(var i=0;i<anotaciones.length;i++){
+    var a=anotaciones[i];
+    ctx.strokeStyle='#FF0000';ctx.lineWidth=Math.max(8,a.radio*0.12);
+    ctx.beginPath();ctx.arc(a.x,a.y,a.radio,0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle='rgba(255,0,0,0.12)';ctx.fill();
+    ctx.fillStyle='#FF0000';ctx.font='bold '+Math.max(40,Math.round(a.radio*0.7))+'px Arial';
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.shadowColor='rgba(0,0,0,0.6)';ctx.shadowBlur=6;
+    ctx.fillText(''+(i+1),a.x,a.y);
+  }
+  ctx.shadowColor='transparent';ctx.shadowBlur=0;
+  var bannerH=75+anotaciones.length*55;
+  ctx.fillStyle='rgba(180,0,0,0.85)';
+  ctx.beginPath();ctx.roundRect(20,20,w-40,bannerH,20);ctx.fill();
+  ctx.fillStyle='#FFD700';ctx.font='bold 55px Arial';
+  ctx.textAlign='left';ctx.textBaseline='top';
+  ctx.fillText('⚠ ANOTACIONES:',50,35);
+  ctx.fillStyle='#fff';ctx.font='42px Arial';
+  for(var i=0;i<anotaciones.length;i++){
+    ctx.fillText((i+1)+'. '+(anotaciones[i].texto||'Punto señalado'),50,90+i*55);
+  }
+  ctx.textAlign='left';ctx.textBaseline='alphabetic';
+}
+function initPreviewListeners(){
+  var prev=document.getElementById('previewCanvas');
+  function handleTap(cx,cy){
+    if(!modoAnotacion)return;
+    var rect=prev.getBoundingClientRect();
+    var fullX=(cx-rect.left)*(3060/rect.width);
+    var fullY=(cy-rect.top)*(4080/rect.height);
+    var radio=parseInt(document.getElementById('circleSize').value)||200;
+    var texto=document.getElementById('annotationText').value.trim();
+    anotaciones.push({x:fullX,y:fullY,radio:radio,texto:texto});
+    document.getElementById('annotationText').value='';
+    dibujarVistaPrevia();
+    showToast('Punto '+anotaciones.length+' marcado','success');
+  }
+  prev.addEventListener('click',function(e){handleTap(e.clientX,e.clientY);});
+  prev.addEventListener('touchstart',function(e){if(!modoAnotacion)return;e.preventDefault();var t=e.touches[0];handleTap(t.clientX,t.clientY);},{passive:false});
 }
 
 function agregarFotoALista(c){var lId,iId;if(camaraTipo==='VP'){if(camaraSubtipo==='general'){lId='vp-fotos-lista';iId='vp-fotos';}else if(camaraSubtipo==='W1'){lId='vp-fc1-lista';iId='vp-fc1';}else{lId='vp-fc2-lista';iId='vp-fc2';}}else{if(camaraSubtipo==='general'){lId='ev-fotos-lista';iId='ev-fotos';}else if(camaraSubtipo==='W1'){lId='ev-fc1-lista';iId='ev-fc1';}else{lId='ev-fc2-lista';iId='ev-fc2';}}document.getElementById(lId).innerHTML+='<span class="foto-tag">'+c+'</span>';var inp=document.getElementById(iId);inp.value=inp.value?(inp.value+', '+c):c;}
@@ -502,7 +591,7 @@ document.addEventListener('DOMContentLoaded',function(){
   });
   var t=new Date().toISOString().split('T')[0];document.getElementById('vp-fecha').value=t;document.getElementById('ev-fecha').value=t;
   var cVP=localStorage.getItem('rapca_contadores_VP'),cEV=localStorage.getItem('rapca_contadores_EV');if(cVP)contadorFotosVP=JSON.parse(cVP);if(cEV)contadorFotosEV=JSON.parse(cEV);
-  generarPlantas();generarPalatables();generarHerbaceas();updateSyncStatus();updatePendingCount();loadPanel();cargarBorradores();iniciarGeolocalizacion();
+  generarPlantas();generarPalatables();generarHerbaceas();updateSyncStatus();updatePendingCount();loadPanel();cargarBorradores();iniciarGeolocalizacion();initPreviewListeners();
   window.addEventListener('online',function(){isOnline=true;updateSyncStatus();procesarSubidasPendientes();});window.addEventListener('offline',function(){isOnline=false;updateSyncStatus();});
   document.addEventListener('click',function(e){if(!e.target.closest('.autocomplete-wrapper'))document.querySelectorAll('.autocomplete-list').forEach(function(l){l.classList.remove('show');});});
   if(window.matchMedia('(display-mode: standalone)').matches){var b=document.getElementById('installBtn');if(b)b.style.display='none';}
