@@ -7,6 +7,9 @@ var cameraStream=null,camaraTipo='',camaraSubtipo='',currentHeading=0;
 var contadorFotosVP={},contadorFotosEV={};
 var currentLat=null,currentLon=null,currentUTM=null;
 var deferredPrompt=null,mapTilesLoaded=[];
+var mapaLeaflet=null,controlCapas=null,capasKML={},capasKMLRaw={},marcadorPosicion=null;
+var syncEnProgreso=false,syncStats={total:0,ok:0,fail:0},fallosSubida=[];
+var anotaciones=[],modoAnotacion=false;
 var fotosDB=null;
 var fotosCacheMemoria={}; // Cache en memoria como respaldo
 
@@ -112,21 +115,259 @@ function actualizarContadorSubidas(){
   try{var tx=fotosDB.transaction(['subidas_pendientes'],'readonly');var req=tx.objectStore('subidas_pendientes').count();req.onsuccess=function(){var el=document.getElementById('uploadCount');if(el)el.textContent=req.result||0;};}catch(e){}
 }
 function procesarSubidasPendientes(){
-  if(!fotosDB||!isOnline)return;
+  if(!fotosDB||!isOnline||syncEnProgreso)return;
   try{
     var tx=fotosDB.transaction(['subidas_pendientes'],'readonly');
     var req=tx.objectStore('subidas_pendientes').getAll();
     req.onsuccess=function(){
       var p=req.result||[];
       if(p.length===0)return;
-      showToast('☁️ Subiendo '+p.length+' fotos...','info');
-      p.forEach(function(item,i){setTimeout(function(){subirFotoNube(item.codigo,item.data,item.unidad,item.tipo);},i*1500);});
+      syncEnProgreso=true;
+      syncStats={total:p.length,ok:0,fail:0};
+      fallosSubida=[];
+      mostrarProgreso();
+      procesarColaSec(p,0);
     };
   }catch(e){console.error('Error procesando subidas:',e);}
 }
 function subirFotoNube(codigo,dataUrl,unidad,tipo){
   if(!isOnline)return;
-  fetch(UPLOAD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codigo:codigo,imagen:dataUrl,unidad:unidad,tipo:tipo})}).then(function(res){if(!res.ok)throw new Error('HTTP '+res.status);return res.json();}).then(function(data){if(data.ok){eliminarSubidaPendiente(codigo);showToast('☁️ '+codigo,'success');}else throw new Error(data.error||'Error');}).catch(function(err){console.error('Error subida '+codigo+':',err);});
+  fetch(UPLOAD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codigo:codigo,imagen:dataUrl,unidad:unidad,tipo:tipo})}).then(function(res){if(!res.ok)throw new Error('HTTP '+res.status);return res.json();}).then(function(data){if(data.ok){eliminarSubidaPendiente(codigo);showToast('☁️ '+codigo,'success');}else throw new Error(data.error||'Error');}).catch(function(err){console.error('Error subida '+codigo+':',err);showToast('⚠️ '+codigo+' en cola','error');});
+}
+// Procesamiento secuencial de cola con reintentos
+function procesarColaSec(lista,idx){
+  if(idx>=lista.length||!isOnline){finalizarSync();return;}
+  var item=lista[idx];
+  actualizarProgreso();
+  subirConReintentos(item.codigo,item.data,item.unidad,item.tipo,3,function(ok){
+    if(ok)syncStats.ok++;else{syncStats.fail++;fallosSubida.push(item.codigo);}
+    actualizarProgreso();
+    setTimeout(function(){procesarColaSec(lista,idx+1);},800);
+  });
+}
+function subirConReintentos(codigo,dataUrl,unidad,tipo,maxI,cb){
+  var i=0;
+  function intentar(){
+    i++;
+    fetch(UPLOAD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codigo:codigo,imagen:dataUrl,unidad:unidad,tipo:tipo})}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}).then(function(d){if(d.ok){eliminarSubidaPendiente(codigo);cb(true);}else throw new Error(d.error||'Error');}).catch(function(e){console.error('Intento '+i+'/'+maxI+' '+codigo+':',e.message);if(i<maxI&&isOnline)setTimeout(intentar,i*2000);else cb(false);});
+  }
+  intentar();
+}
+function finalizarSync(){
+  syncEnProgreso=false;
+  setTimeout(ocultarProgreso,1500);
+  actualizarContadorSubidas();
+  if(syncStats.fail===0&&syncStats.ok>0){showToast('✅ '+syncStats.ok+' fotos subidas','success');cerrarAlertaSync();}
+  else if(syncStats.fail>0){mostrarAlertaSync(syncStats.fail,syncStats.ok);notificarFalloAdmin(fallosSubida);}
+}
+// Barra de progreso en tiempo real
+function mostrarProgreso(){var el=document.getElementById('syncProgress');if(el)el.classList.add('show');actualizarProgreso();}
+function ocultarProgreso(){var el=document.getElementById('syncProgress');if(el)el.classList.remove('show');}
+function actualizarProgreso(){
+  var done=syncStats.ok+syncStats.fail,pct=syncStats.total>0?Math.round(done/syncStats.total*100):0;
+  var t=document.getElementById('syncProgressText'),c=document.getElementById('syncProgressCount'),b=document.getElementById('syncProgressBar');
+  if(t)t.textContent=syncStats.fail>0?'Subiendo fotos ('+syncStats.fail+' fallos)...':'Subiendo fotos...';
+  if(c)c.textContent=done+'/'+syncStats.total;
+  if(b)b.style.width=pct+'%';
+}
+// Alerta persistente de fallos
+function mostrarAlertaSync(fallos,exitos){
+  var el=document.getElementById('syncAlert'),txt=document.getElementById('syncAlertText');
+  if(!el)return;
+  var msg='⚠️ '+fallos+' foto'+(fallos>1?'s':'')+' no se pudieron subir';
+  if(exitos>0)msg+=' ('+exitos+' OK)';
+  if(txt)txt.textContent=msg;
+  el.classList.add('show');
+}
+function cerrarAlertaSync(){var el=document.getElementById('syncAlert');if(el)el.classList.remove('show');}
+// Notificación al administrador
+function notificarFalloAdmin(codigos){
+  if(!isOnline||codigos.length===0)return;
+  fetch('notificar.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codigos:codigos,error:'Fallo tras 3 reintentos por foto',dispositivo:navigator.userAgent})}).catch(function(){});
+}
+
+// --- Mapa de Visitas (Leaflet) ---
+function initMapa(){
+  if(mapaLeaflet)return;
+  if(typeof L==='undefined'){showToast('Leaflet no cargado','error');return;}
+  var osmLayer=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'});
+  var ortofoto=L.tileLayer.wms('https://www.ign.es/wms-inspire/pnoa-ma',{layers:'OI.OrthoimageCoverage',format:'image/jpeg',transparent:false,maxZoom:20,attribution:'PNOA © IGN'});
+  var topo=L.tileLayer.wms('https://www.ideandalucia.es/services/mta10r_2001/wms',{layers:'mta10r_2001',format:'image/png',transparent:false,maxZoom:20,attribution:'MTA 1:10.000 © Junta de Andalucía'});
+  mapaLeaflet=L.map('mapa',{center:[37.8,-3.8],zoom:10,layers:[osmLayer]});
+  controlCapas=L.control.layers({'OpenStreetMap':osmLayer,'Ortofoto PNOA':ortofoto,'Topográfico 1:10.000':topo},{},{collapsed:true}).addTo(mapaLeaflet);
+  if(currentLat&&currentLon){
+    marcadorPosicion=L.marker([currentLat,currentLon],{icon:L.divIcon({className:'',html:'<div style="background:#3498db;width:16px;height:16px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 6px rgba(0,0,0,.4)"></div>',iconSize:[16,16],iconAnchor:[8,8]})}).addTo(mapaLeaflet).bindPopup('Mi posición');
+    mapaLeaflet.setView([currentLat,currentLon],14);
+  }
+  cargarCapasKMLGuardadas();
+}
+function cargarArchivoMapa(file){
+  if(!file)return;
+  var ext=file.name.split('.').pop().toLowerCase();
+  if(ext==='kml'){
+    var reader=new FileReader();
+    reader.onload=function(e){procesarKML(e.target.result,file.name);};
+    reader.readAsText(file);
+  }else if(ext==='kmz'){
+    if(typeof JSZip==='undefined'){showToast('JSZip no cargado','error');return;}
+    var reader=new FileReader();
+    reader.onload=function(e){
+      JSZip.loadAsync(e.target.result).then(function(zip){
+        var kmlFile=null;
+        zip.forEach(function(path,entry){if(path.match(/\.kml$/i)&&!kmlFile)kmlFile=entry;});
+        if(kmlFile)return kmlFile.async('string');
+        throw new Error('No hay KML dentro del KMZ');
+      }).then(function(kmlText){procesarKML(kmlText,file.name);}).catch(function(err){showToast('Error KMZ: '+err.message,'error');});
+    };
+    reader.readAsArrayBuffer(file);
+  }else{showToast('Formato no soportado','error');}
+}
+function procesarKML(kmlText,nombre){
+  if(!mapaLeaflet)initMapa();
+  var layer=parsearKML(kmlText);
+  var n=layer.getLayers().length;
+  if(n===0){showToast('Sin elementos en '+nombre,'info');return;}
+  layer.addTo(mapaLeaflet);
+  capasKML[nombre]=layer;
+  capasKMLRaw[nombre]=kmlText;
+  if(controlCapas)controlCapas.addOverlay(layer,nombre);
+  mapaLeaflet.fitBounds(layer.getBounds(),{padding:[30,30]});
+  actualizarListaCapas();
+  guardarCapasKMLLocal();
+  showToast(nombre+': '+n+' elementos','success');
+}
+function parsearKML(kmlText){
+  var parser=new DOMParser();
+  var cleanKml=kmlText.replace(/xmlns="[^"]*"/g,'');
+  var doc=parser.parseFromString(cleanKml,'text/xml');
+  var layers=L.featureGroup();
+  // Parsear estilos
+  var estilos={};
+  var styleEls=doc.querySelectorAll('Style');
+  for(var i=0;i<styleEls.length;i++){
+    var s=styleEls[i],id=s.getAttribute('id');
+    if(!id)continue;
+    estilos[id]={};
+    var ls=s.querySelector('LineStyle'),ps=s.querySelector('PolyStyle'),is=s.querySelector('IconStyle');
+    if(ls){var lc=ls.querySelector('color'),lw=ls.querySelector('width');if(lc)estilos[id].lineColor=kmlColorToHex(lc.textContent);if(lw)estilos[id].lineWidth=parseFloat(lw.textContent);}
+    if(ps){var pc=ps.querySelector('color');if(pc)estilos[id].fillColor=kmlColorToHex(pc.textContent);}
+    if(is){var ic=is.querySelector('color');if(ic)estilos[id].iconColor=kmlColorToHex(ic.textContent);}
+  }
+  // Parsear StyleMap
+  var styleMaps=doc.querySelectorAll('StyleMap');
+  for(var i=0;i<styleMaps.length;i++){
+    var sm=styleMaps[i],smId=sm.getAttribute('id');
+    if(!smId)continue;
+    var pairs=sm.querySelectorAll('Pair');
+    for(var j=0;j<pairs.length;j++){
+      var key=pairs[j].querySelector('key'),url=pairs[j].querySelector('styleUrl');
+      if(key&&key.textContent==='normal'&&url){var refId=url.textContent.replace('#','');if(estilos[refId])estilos[smId]=estilos[refId];}
+    }
+  }
+  // Parsear placemarks
+  var pms=doc.querySelectorAll('Placemark');
+  for(var i=0;i<pms.length;i++){
+    var pm=pms[i];
+    var nameEl=pm.querySelector('name'),descEl=pm.querySelector('description');
+    var nombre=nameEl?nameEl.textContent.trim():'';
+    var desc=descEl?descEl.textContent.trim():'';
+    var popup=nombre?'<b>'+nombre+'</b>':'';
+    if(desc)popup+=(popup?'<br>':'')+desc;
+    // Obtener estilo
+    var styleUrl=pm.querySelector('styleUrl');
+    var estilo={};
+    if(styleUrl){var sid=styleUrl.textContent.replace('#','');estilo=estilos[sid]||{};}
+    // Geometrías
+    var point=pm.querySelector('Point');
+    var line=pm.querySelector('LineString');
+    var polygon=pm.querySelector('Polygon');
+    if(point){
+      var coordsEl=point.querySelector('coordinates');
+      if(coordsEl){
+        var c=parseKMLCoord(coordsEl.textContent);
+        var mkOpts={};
+        if(estilo.iconColor){mkOpts.icon=L.divIcon({className:'',html:'<div style="background:'+estilo.iconColor+';width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',iconSize:[12,12],iconAnchor:[6,6]});}
+        var mk=L.marker([c[0][1],c[0][0]],mkOpts);
+        if(popup)mk.bindPopup(popup);
+        layers.addLayer(mk);
+      }
+    }
+    if(line){
+      var coordsEl=line.querySelector('coordinates');
+      if(coordsEl){
+        var coords=parseKMLCoord(coordsEl.textContent);
+        var latlngs=coords.map(function(c){return[c[1],c[0]];});
+        var opts={color:estilo.lineColor||'#3388ff',weight:estilo.lineWidth||3};
+        var pl=L.polyline(latlngs,opts);
+        if(popup)pl.bindPopup(popup);
+        layers.addLayer(pl);
+      }
+    }
+    if(polygon){
+      var outerCoords=polygon.querySelector('outerBoundaryIs coordinates');
+      if(!outerCoords){var ob=polygon.querySelector('outerBoundaryIs');if(ob)outerCoords=ob.querySelector('coordinates');}
+      if(outerCoords){
+        var coords=parseKMLCoord(outerCoords.textContent);
+        var latlngs=coords.map(function(c){return[c[1],c[0]];});
+        var opts={color:estilo.lineColor||'#3388ff',fillColor:estilo.fillColor||'#3388ff',fillOpacity:0.3};
+        var pg=L.polygon(latlngs,opts);
+        if(popup)pg.bindPopup(popup);
+        layers.addLayer(pg);
+      }
+    }
+  }
+  return layers;
+}
+function parseKMLCoord(text){
+  return text.trim().split(/\s+/).filter(function(s){return s.length>0;}).map(function(c){var p=c.split(',');return[parseFloat(p[0]),parseFloat(p[1]),parseFloat(p[2]||0)];});
+}
+function kmlColorToHex(kc){
+  kc=kc.trim();if(kc.length!==8)return'#3388ff';
+  return'#'+kc.substr(6,2)+kc.substr(4,2)+kc.substr(2,2);
+}
+function actualizarListaCapas(){
+  var el=document.getElementById('capas-lista');if(!el)return;
+  var html='';
+  Object.keys(capasKML).forEach(function(nombre){
+    var n=capasKML[nombre].getLayers().length;
+    html+='<div class="capas-item"><span>📄 '+nombre+' ('+n+')</span><button onclick="eliminarCapaMapa(\''+nombre.replace(/'/g,"\\'")+'\')">✖</button></div>';
+  });
+  el.innerHTML=html;
+}
+function eliminarCapaMapa(nombre){
+  if(capasKML[nombre]){
+    mapaLeaflet.removeLayer(capasKML[nombre]);
+    if(controlCapas)controlCapas.removeLayer(capasKML[nombre]);
+    delete capasKML[nombre];delete capasKMLRaw[nombre];
+    actualizarListaCapas();guardarCapasKMLLocal();
+    showToast('Capa eliminada','success');
+  }
+}
+function limpiarCapasMapa(){
+  if(Object.keys(capasKML).length===0){showToast('No hay capas','info');return;}
+  if(!confirm('¿Eliminar todas las capas?'))return;
+  Object.keys(capasKML).forEach(function(k){mapaLeaflet.removeLayer(capasKML[k]);if(controlCapas)controlCapas.removeLayer(capasKML[k]);});
+  capasKML={};capasKMLRaw={};
+  actualizarListaCapas();guardarCapasKMLLocal();
+  showToast('Capas eliminadas','success');
+}
+function centrarEnMiPosicion(){
+  if(!mapaLeaflet)initMapa();
+  if(!currentLat||!currentLon){showToast('Sin señal GPS','error');return;}
+  if(marcadorPosicion){marcadorPosicion.setLatLng([currentLat,currentLon]);}
+  else{marcadorPosicion=L.marker([currentLat,currentLon],{icon:L.divIcon({className:'',html:'<div style="background:#3498db;width:16px;height:16px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 6px rgba(0,0,0,.4)"></div>',iconSize:[16,16],iconAnchor:[8,8]})}).addTo(mapaLeaflet).bindPopup('Mi posición');}
+  mapaLeaflet.setView([currentLat,currentLon],16);
+}
+function guardarCapasKMLLocal(){
+  try{localStorage.setItem('rapca_kml_capas',JSON.stringify(capasKMLRaw));}catch(e){console.warn('KML demasiado grande para localStorage');}
+}
+function cargarCapasKMLGuardadas(){
+  var saved=localStorage.getItem('rapca_kml_capas');
+  if(!saved)return;
+  try{var data=JSON.parse(saved);Object.keys(data).forEach(function(nombre){
+    var layer=parsearKML(data[nombre]);
+    if(layer.getLayers().length>0){layer.addTo(mapaLeaflet);capasKML[nombre]=layer;capasKMLRaw[nombre]=data[nombre];if(controlCapas)controlCapas.addOverlay(layer,nombre);}
+  });actualizarListaCapas();}catch(e){console.error('Error cargando KML guardados:',e);}
 }
 
 window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();deferredPrompt=e;mostrarBotonInstalar();});
@@ -217,38 +458,126 @@ function capturarFoto(){
   ctx.font='bold 95px Arial';ctx.fillText(latlon,textX,textY);
   ctx.shadowColor='transparent';ctx.shadowBlur=0;ctx.textAlign='left';
   
-  // Guardar miniatura PRIMERO (síncrono en memoria)
-  var thumbCanvas=document.createElement('canvas');
-  var thumbW=400,thumbH=533;
-  thumbCanvas.width=thumbW;thumbCanvas.height=thumbH;
-  var thumbCtx=thumbCanvas.getContext('2d');
-  thumbCtx.drawImage(canvas,0,0,finalW,finalH,0,0,thumbW,thumbH);
-  var thumbDataUrl=thumbCanvas.toDataURL('image/jpeg',0.50);
-  
-  // Guardar en memoria inmediatamente
-  fotosCacheMemoria[codigo]=thumbDataUrl;
-  console.log('Foto en memoria:',codigo,'Total:',Object.keys(fotosCacheMemoria).length);
-  
-  // Guardar en IndexedDB (async)
-  guardarFotoEnDB(codigo,thumbDataUrl);
-  
-  // Guardar foto para descarga (alta calidad)
-  canvas.toBlob(function(b){
-    var l=document.createElement('a');l.href=URL.createObjectURL(b);l.download=codigo+'.jpg';l.click();
-  },'image/jpeg',0.95);
+  // Mostrar vista previa con opciones de anotar, repetir o aceptar
+  mostrarVistaPrevia();
+}
 
-  // Subir a la nube (resolución media para optimizar subida)
+// --- Vista Previa y Anotaciones en Foto ---
+function mostrarVistaPrevia(){
+  document.getElementById('cameraModal').classList.remove('show');
+  anotaciones=[];modoAnotacion=false;
+  document.getElementById('previewTools').classList.remove('show');
+  var btn=document.getElementById('btnAnotar');btn.textContent='🔴 Anotar';btn.classList.remove('active');
+  document.querySelector('.btn-preview.accept').textContent='✅ Aceptar';
+  document.getElementById('previewModal').classList.add('show');
+  requestAnimationFrame(function(){requestAnimationFrame(function(){dibujarVistaPrevia();});});
+}
+function dibujarVistaPrevia(){
+  var src=document.getElementById('photoCanvas');
+  var prev=document.getElementById('previewCanvas');
+  var container=document.getElementById('previewContainer');
+  var cW=container.clientWidth||300,cH=container.clientHeight||400;
+  var aspect=3/4,pW,pH;
+  if(cW/cH>aspect){pH=cH;pW=Math.round(pH*aspect);}
+  else{pW=cW;pH=Math.round(pW/aspect);}
+  prev.width=pW;prev.height=pH;
+  var ctx=prev.getContext('2d');
+  ctx.drawImage(src,0,0,3060,4080,0,0,pW,pH);
+  var s=pW/3060;
+  for(var i=0;i<anotaciones.length;i++){
+    var a=anotaciones[i],ax=a.x*s,ay=a.y*s,ar=a.radio*s;
+    ctx.strokeStyle='#FF0000';ctx.lineWidth=Math.max(2,ar*0.1);
+    ctx.beginPath();ctx.arc(ax,ay,ar,0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle='rgba(255,0,0,0.15)';ctx.fill();
+    ctx.fillStyle='#FF0000';ctx.font='bold '+Math.max(12,Math.round(ar*0.6))+'px Arial';
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(''+(i+1),ax,ay);
+  }
+  ctx.textAlign='left';ctx.textBaseline='alphabetic';
+  var btnA=document.querySelector('.btn-preview.accept');
+  if(btnA)btnA.textContent=anotaciones.length>0?'✅ Aceptar ('+anotaciones.length+')':'✅ Aceptar';
+}
+function toggleAnotacion(){
+  modoAnotacion=!modoAnotacion;
+  var btn=document.getElementById('btnAnotar'),tools=document.getElementById('previewTools');
+  if(modoAnotacion){btn.textContent='✖ Cerrar';btn.classList.add('active');tools.classList.add('show');}
+  else{btn.textContent='🔴 Anotar';btn.classList.remove('active');tools.classList.remove('show');}
+  requestAnimationFrame(function(){dibujarVistaPrevia();});
+}
+function deshacerAnotacion(){
+  if(anotaciones.length===0){showToast('Sin anotaciones','info');return;}
+  anotaciones.pop();dibujarVistaPrevia();showToast('Anotación eliminada','info');
+}
+function repetirFoto(){
+  document.getElementById('previewModal').classList.remove('show');
+  anotaciones=[];modoAnotacion=false;
+  document.getElementById('cameraModal').classList.add('show');
+  if(cameraStream){actualizarBrujula();}
+  else{navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1920},height:{ideal:1080}}}).then(function(s){cameraStream=s;document.getElementById('cameraVideo').srcObject=s;actualizarBrujula();}).catch(function(){showToast('Error cámara','error');cerrarCamara();});}
+}
+function aceptarFoto(){
+  var canvas=document.getElementById('photoCanvas'),ctx=canvas.getContext('2d');
+  var codigo=document.getElementById('overlayCode').textContent;
+  if(anotaciones.length>0)dibujarAnotacionesEnCanvas(ctx,canvas.width,canvas.height);
+  document.getElementById('previewModal').classList.remove('show');
+  if(cameraStream){cameraStream.getTracks().forEach(function(t){t.stop();});cameraStream=null;}
+  var thumbCanvas=document.createElement('canvas'),thumbW=400,thumbH=533;
+  thumbCanvas.width=thumbW;thumbCanvas.height=thumbH;
+  thumbCanvas.getContext('2d').drawImage(canvas,0,0,3060,4080,0,0,thumbW,thumbH);
+  var thumbDataUrl=thumbCanvas.toDataURL('image/jpeg',0.50);
+  fotosCacheMemoria[codigo]=thumbDataUrl;
+  guardarFotoEnDB(codigo,thumbDataUrl);
+  canvas.toBlob(function(b){var l=document.createElement('a');l.href=URL.createObjectURL(b);l.download=codigo+'.jpg';l.click();},'image/jpeg',0.95);
   var upCanvas=document.createElement('canvas');upCanvas.width=1530;upCanvas.height=2040;
-  var upCtx=upCanvas.getContext('2d');upCtx.drawImage(canvas,0,0,finalW,finalH,0,0,1530,2040);
+  upCanvas.getContext('2d').drawImage(canvas,0,0,3060,4080,0,0,1530,2040);
   var upData=upCanvas.toDataURL('image/jpeg',0.85);
   var upUnidad=(camaraTipo==='VP')?document.getElementById('vp-unidad').value.trim():document.getElementById('ev-unidad').value.trim();
   guardarSubidaPendiente(codigo,upData,upUnidad,camaraTipo);
   if(isOnline)subirFotoNube(codigo,upData,upUnidad,camaraTipo);
-
   agregarFotoALista(codigo);
-  showToast('📷 '+codigo,'success');
-  document.getElementById('cameraModal').classList.remove('show');
-  if(cameraStream){cameraStream.getTracks().forEach(function(t){t.stop();});cameraStream=null;}
+  showToast(isOnline?'📷☁️ '+codigo:'📷 '+codigo+' (offline)','success');
+  anotaciones=[];modoAnotacion=false;
+}
+function dibujarAnotacionesEnCanvas(ctx,w,h){
+  for(var i=0;i<anotaciones.length;i++){
+    var a=anotaciones[i];
+    ctx.strokeStyle='#FF0000';ctx.lineWidth=Math.max(8,a.radio*0.12);
+    ctx.beginPath();ctx.arc(a.x,a.y,a.radio,0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle='rgba(255,0,0,0.12)';ctx.fill();
+    ctx.fillStyle='#FF0000';ctx.font='bold '+Math.max(40,Math.round(a.radio*0.7))+'px Arial';
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.shadowColor='rgba(0,0,0,0.6)';ctx.shadowBlur=6;
+    ctx.fillText(''+(i+1),a.x,a.y);
+  }
+  ctx.shadowColor='transparent';ctx.shadowBlur=0;
+  var bannerH=75+anotaciones.length*55;
+  ctx.fillStyle='rgba(180,0,0,0.85)';
+  ctx.beginPath();ctx.roundRect(20,20,w-40,bannerH,20);ctx.fill();
+  ctx.fillStyle='#FFD700';ctx.font='bold 55px Arial';
+  ctx.textAlign='left';ctx.textBaseline='top';
+  ctx.fillText('⚠ ANOTACIONES:',50,35);
+  ctx.fillStyle='#fff';ctx.font='42px Arial';
+  for(var i=0;i<anotaciones.length;i++){
+    ctx.fillText((i+1)+'. '+(anotaciones[i].texto||'Punto señalado'),50,90+i*55);
+  }
+  ctx.textAlign='left';ctx.textBaseline='alphabetic';
+}
+function initPreviewListeners(){
+  var prev=document.getElementById('previewCanvas');
+  function handleTap(cx,cy){
+    if(!modoAnotacion)return;
+    var rect=prev.getBoundingClientRect();
+    var fullX=(cx-rect.left)*(3060/rect.width);
+    var fullY=(cy-rect.top)*(4080/rect.height);
+    var radio=parseInt(document.getElementById('circleSize').value)||200;
+    var texto=document.getElementById('annotationText').value.trim();
+    anotaciones.push({x:fullX,y:fullY,radio:radio,texto:texto});
+    document.getElementById('annotationText').value='';
+    dibujarVistaPrevia();
+    showToast('Punto '+anotaciones.length+' marcado','success');
+  }
+  prev.addEventListener('click',function(e){handleTap(e.clientX,e.clientY);});
+  prev.addEventListener('touchstart',function(e){if(!modoAnotacion)return;e.preventDefault();var t=e.touches[0];handleTap(t.clientX,t.clientY);},{passive:false});
 }
 
 function agregarFotoALista(c){var lId,iId;if(camaraTipo==='VP'){if(camaraSubtipo==='general'){lId='vp-fotos-lista';iId='vp-fotos';}else if(camaraSubtipo==='W1'){lId='vp-fc1-lista';iId='vp-fc1';}else{lId='vp-fc2-lista';iId='vp-fc2';}}else{if(camaraSubtipo==='general'){lId='ev-fotos-lista';iId='ev-fotos';}else if(camaraSubtipo==='W1'){lId='ev-fc1-lista';iId='ev-fc1';}else{lId='ev-fc2-lista';iId='ev-fc2';}}document.getElementById(lId).innerHTML+='<span class="foto-tag">'+c+'</span>';var inp=document.getElementById(iId);inp.value=inp.value?(inp.value+', '+c):c;}
@@ -262,7 +591,7 @@ document.addEventListener('DOMContentLoaded',function(){
   });
   var t=new Date().toISOString().split('T')[0];document.getElementById('vp-fecha').value=t;document.getElementById('ev-fecha').value=t;
   var cVP=localStorage.getItem('rapca_contadores_VP'),cEV=localStorage.getItem('rapca_contadores_EV');if(cVP)contadorFotosVP=JSON.parse(cVP);if(cEV)contadorFotosEV=JSON.parse(cEV);
-  generarPlantas();generarPalatables();generarHerbaceas();updateSyncStatus();updatePendingCount();loadPanel();cargarBorradores();iniciarGeolocalizacion();
+  generarPlantas();generarPalatables();generarHerbaceas();updateSyncStatus();updatePendingCount();loadPanel();cargarBorradores();iniciarGeolocalizacion();initPreviewListeners();
   window.addEventListener('online',function(){isOnline=true;updateSyncStatus();procesarSubidasPendientes();});window.addEventListener('offline',function(){isOnline=false;updateSyncStatus();});
   document.addEventListener('click',function(e){if(!e.target.closest('.autocomplete-wrapper'))document.querySelectorAll('.autocomplete-list').forEach(function(l){l.classList.remove('show');});});
   if(window.matchMedia('(display-mode: standalone)').matches){var b=document.getElementById('installBtn');if(b)b.style.display='none';}
@@ -281,7 +610,7 @@ function showAutocomplete(i){var l=document.getElementById('ac-'+i.id);if(!l)ret
 function filterAutocomplete(i){if(currentAutocomplete&&currentAutocomplete.input===i)renderAutocompleteList(i.value);}
 function renderAutocompleteList(f){if(!currentAutocomplete)return;var l=currentAutocomplete.list,fL=f.toLowerCase(),h='';PLANTAS.filter(function(p){return p.toLowerCase().indexOf(fL)!==-1;}).forEach(function(p){h+='<div class="autocomplete-item" onclick="selectAutocomplete(\''+p.replace(/'/g,"\\'")+'\')">'+p+'</div>';});l.innerHTML=h||'<div class="autocomplete-item" style="color:#999">Sin resultados</div>';}
 function selectAutocomplete(v){if(currentAutocomplete){currentAutocomplete.input.value=v;currentAutocomplete.list.classList.remove('show');actualizarResumenMatorral();currentAutocomplete=null;}}
-function showPage(p){document.querySelectorAll('.page').forEach(function(x){x.classList.remove('active');});document.querySelectorAll('.nav-btn').forEach(function(b){b.classList.remove('active');});document.getElementById('page-'+p).classList.add('active');document.querySelectorAll('.nav-btn')[['menu','vp','ev','panel'].indexOf(p)].classList.add('active');if(p==='panel')loadPanel();window.scrollTo(0,0);}
+function showPage(p){document.querySelectorAll('.page').forEach(function(x){x.classList.remove('active');});document.querySelectorAll('.nav-btn').forEach(function(b){b.classList.remove('active');});document.getElementById('page-'+p).classList.add('active');document.querySelectorAll('.nav-btn')[['menu','vp','ev','mapa','panel'].indexOf(p)].classList.add('active');if(p==='panel')loadPanel();if(p==='mapa'){setTimeout(function(){initMapa();if(mapaLeaflet)mapaLeaflet.invalidateSize();},100);}window.scrollTo(0,0);}
 function toggleSection(id){document.getElementById(id).classList.toggle('open');}
 function setTransecto(n){transectoActual=n;document.querySelectorAll('.transecto-btn').forEach(function(b,i){b.classList.toggle('active',i===n-1);});document.getElementById('btnGuardarEV').textContent='💾 Guardar EV - T'+n;}
 function guardarBorradores(){localStorage.setItem('rapca_borrador_vp',JSON.stringify(obtenerDatosVP()));localStorage.setItem('rapca_borrador_ev',JSON.stringify(obtenerDatosEV()));}
