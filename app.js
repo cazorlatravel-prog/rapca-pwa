@@ -7,7 +7,7 @@ var ENTRY={tipo:'entry.437432431',fecha:'entry.1468491774',zona:'entry.226003494
 var PLANTAS=['Arbutus unedo','Asparagus acutifolius','Chamaerops humilis','Cistus sp.','Crataegus monogyna','Cytisus sp.','Daphne gnidium','Dittrichia viscosa','Foeniculum vulgare','Genista sp.','Halimium sp.','Helichrysum stoechas','Juncus spp.','Juniperus sp.','Lavandula latifolia','Myrtus communis','Olea europaea var. sylvestris','Phillyrea angustifolia','Phlomis purpurea','Pistacia lentiscus','Quercus coccifera','Quercus ilex','Quercus sp.','Retama sphaerocarpa','Rhamnus sp.','Rosa sp.','Rosmarinus officinalis','Rubus ulmifolius','Salvia rosmarinus','Spartium junceum','Thymus sp.','Ulex sp.'];
 var transectoActual=1,isOnline=navigator.onLine,currentAutocomplete=null,editandoId=null;
 var cameraStream=null,camaraTipo='',camaraSubtipo='',currentHeading=0;
-var contadorFotosVP={},contadorFotosEV={};
+var contadorFotosVP={},contadorFotosEV={},contadorFotosEL={};
 var currentLat=null,currentLon=null,currentUTM=null;
 var deferredPrompt=null,mapTilesLoaded=[];
 var mapaLeaflet=null,controlCapas=null,capasKML={},capasKMLRaw={},marcadorPosicion=null,clusterGroup=null;
@@ -32,6 +32,38 @@ var INFRA_CAMPOS_BASE=[
 ];
 var fotosDB=null;
 var fotosCacheMemoria={}; // Cache en memoria como respaldo
+
+// --- Auth local (funciona sin backend PHP) ---
+function getUsuariosLocal(){var d=localStorage.getItem('rapca_usuarios_local');return d?JSON.parse(d):[];}
+function guardarUsuariosLocal(lista){localStorage.setItem('rapca_usuarios_local',JSON.stringify(lista));}
+function initUsuariosLocal(){
+  var users=getUsuariosLocal();
+  if(users.length===0){
+    users.push({id:1,email:'admin@rapca.com',nombre:'Administrador',password:'admin123',rol:'admin',activo:1});
+    guardarUsuariosLocal(users);
+  }
+}
+function loginLocal(email,password){
+  var users=getUsuariosLocal();
+  var user=users.find(function(u){return u.email===email&&u.password===password&&u.activo!==0;});
+  if(user)return{ok:true,token:'local_'+Date.now(),usuario:{email:user.email,nombre:user.nombre,rol:user.rol,id:user.id}};
+  return{ok:false,error:'Email o contraseña incorrectos'};
+}
+function crearUsuarioLocal(email,nombre,password,rol){
+  var users=getUsuariosLocal();
+  if(users.find(function(u){return u.email===email;}))return{ok:false,error:'Email ya existe'};
+  users.push({id:Date.now(),email:email,nombre:nombre,password:password,rol:rol||'operador',activo:1});
+  guardarUsuariosLocal(users);
+  return{ok:true};
+}
+
+// --- Migración de datos: EV → EI ---
+function migrarRegistrosEVaEI(){
+  var rs=getRegistros();
+  var changed=false;
+  rs.forEach(function(r){if(r.tipo==='EV'){r.tipo='EI';changed=true;}});
+  if(changed){localStorage.setItem('rapca_registros',JSON.stringify(rs));console.log('Migrados registros EV→EI');}
+}
 
 // IndexedDB para fotos
 function initFotosDB(){
@@ -258,7 +290,7 @@ function actualizarMarcadoresMapa(){
     if(filtroDesde)rs=rs.filter(function(r){return r.fecha>=filtroDesde;});
     rs.forEach(function(r){
       if(!r.lat||!r.lon)return;
-      var color=r.tipo==='VP'?'#88d8b0':'#fd9853';
+      var color=r.tipo==='VP'?'#88d8b0':r.tipo==='EL'?'#2ecc71':'#fd9853';
       var mk=L.marker([r.lat,r.lon],{icon:L.divIcon({className:'',html:'<div style="background:'+color+';width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',iconSize:[14,14],iconAnchor:[7,7]})});
       mk.bindPopup('<b>'+r.tipo+' '+r.unidad+'</b><br>'+r.fecha+(r.operador_nombre?'<br>'+r.operador_nombre:''));
       clusterGroup.addLayer(mk);
@@ -293,17 +325,17 @@ function actualizarMarcadoresMapa(){
       if(!inf.lat||!inf.lon)return;
       // Calcular indicadores de estado
       var allRegs=getRegistros();
-      var vpCount=0,evCount=0,fotoCount=0;
+      var vpCount=0,elCount=0,eiCount=0,fotoCount=0;
       allRegs.forEach(function(r){
         if(r.unidad===inf.idUnidad){
-          if(r.tipo==='VP')vpCount++;else evCount++;
+          if(r.tipo==='VP')vpCount++;else if(r.tipo==='EL')elCount++;else eiCount++;
           var dd=r.datos||{};
           if(dd.fotos)fotoCount+=dd.fotos.split(',').filter(function(x){return x.trim();}).length;
           if(dd.fotosComp)dd.fotosComp.forEach(function(fc){if(fc.numero)fotoCount+=fc.numero.split(',').filter(function(x){return x.trim();}).length;});
         }
       });
       var mk=L.marker([parseFloat(inf.lat),parseFloat(inf.lon)],{icon:L.divIcon({className:'',html:'<div style="background:#8e44ad;width:14px;height:14px;border-radius:7px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',iconSize:[14,14],iconAnchor:[7,7]})});
-      mk.bindPopup('<b>'+(inf.idUnidad||'--')+'</b><br>'+(inf.nombre||'')+'<br>'+(inf.municipio||'')+'<br><small>VP: '+vpCount+' | EV: '+evCount+' | Fotos: '+fotoCount+'</small>');
+      mk.bindPopup('<b>'+(inf.idUnidad||'--')+'</b><br>'+(inf.nombre||'')+'<br>'+(inf.municipio||'')+'<br><small>VP: '+vpCount+' | EL: '+elCount+' | EI: '+eiCount+' | Fotos: '+fotoCount+'</small>');
       clusterGroup.addLayer(mk);
     });
   }
@@ -508,19 +540,22 @@ function actualizarZonaDesdeUnidad(tipo){var unidad=document.getElementById(tipo
 function getContadorKey(u,t,s){return u+'_'+t+'_'+(s==='general'?'G':s);}
 
 function inicializarContadoresDesdeEdicion(tipo,fotos,fc1,fc2){
-  var unidad=document.getElementById(tipo.toLowerCase()+'-unidad').value.trim();
-  var c=(tipo==='VP')?contadorFotosVP:contadorFotosEV;
+  var pre=(tipo==='VP')?'vp':(tipo==='EL')?'el':'ev';
+  var unidad=document.getElementById(pre+'-unidad').value.trim();
+  var c=getContadorObj(tipo);
   if(fotos){var arr=fotos.split(',').map(function(x){return x.trim();}).filter(function(x){return x;});var maxG=0;arr.forEach(function(f){var m=f.match(/_(\d+)$/);if(m&&parseInt(m[1])>maxG)maxG=parseInt(m[1]);});c[getContadorKey(unidad,tipo,'general')]=maxG;}
   if(fc1){var arr1=fc1.split(',').map(function(x){return x.trim();}).filter(function(x){return x;});var maxW1=0;arr1.forEach(function(f){var m=f.match(/_(\d+)$/);if(m&&parseInt(m[1])>maxW1)maxW1=parseInt(m[1]);});c[getContadorKey(unidad,tipo,'W1')]=maxW1;}
   if(fc2){var arr2=fc2.split(',').map(function(x){return x.trim();}).filter(function(x){return x;});var maxW2=0;arr2.forEach(function(f){var m=f.match(/_(\d+)$/);if(m&&parseInt(m[1])>maxW2)maxW2=parseInt(m[1]);});c[getContadorKey(unidad,tipo,'W2')]=maxW2;}
-  localStorage.setItem('rapca_contadores_'+tipo,JSON.stringify(c));
+  localStorage.setItem(getContadorLSKey(tipo),JSON.stringify(c));
 }
 
-function getNextFotoNum(u,t,s){var c=(t==='VP')?contadorFotosVP:contadorFotosEV,k=getContadorKey(u,t,s);if(!c[k])c[k]=0;c[k]++;localStorage.setItem('rapca_contadores_'+t,JSON.stringify(c));return c[k];}
+function getContadorObj(t){return(t==='VP')?contadorFotosVP:(t==='EL')?contadorFotosEL:contadorFotosEV;}
+function getContadorLSKey(t){return'rapca_contadores_'+((t==='EI')?'EI':t);}
+function getNextFotoNum(u,t,s){var c=getContadorObj(t),k=getContadorKey(u,t,s);if(!c[k])c[k]=0;c[k]++;localStorage.setItem(getContadorLSKey(t),JSON.stringify(c));return c[k];}
 function generarCodigoFoto(u,t,s,n){return s==='general'?u+'_'+t+'_'+n:u+'_'+t+'_'+s+'_'+n;}
 
 function abrirCamara(tipo,subtipo){
-  var unidad=(tipo==='VP')?document.getElementById('vp-unidad').value.trim():document.getElementById('ev-unidad').value.trim();
+  var unidad=(tipo==='VP')?document.getElementById('vp-unidad').value.trim():(tipo==='EL')?document.getElementById('el-unidad').value.trim():document.getElementById('ev-unidad').value.trim();
   if(!unidad){showToast('Introduce Unidad','error');return;}
   camaraTipo=tipo;camaraSubtipo=subtipo;
   var num=getNextFotoNum(unidad,tipo,subtipo),codigo=generarCodigoFoto(unidad,tipo,subtipo,num);
@@ -532,7 +567,7 @@ function abrirCamara(tipo,subtipo){
   navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1920},height:{ideal:1080}}}).then(function(s){cameraStream=s;document.getElementById('cameraVideo').srcObject=s;actualizarBrujula();}).catch(function(){showToast('Error cámara','error');cerrarCamara();});
 }
 function actualizarBrujula(){if(document.getElementById('cameraModal').classList.contains('show')){var d=['N','NE','E','SE','S','SO','O','NO'],i=Math.round(currentHeading/45)%8;document.getElementById('overlayCompass').textContent=d[i]+' '+currentHeading+'°';if(currentLat)document.getElementById('overlayCoords').textContent=currentLat.toFixed(6)+', '+currentLon.toFixed(6);requestAnimationFrame(actualizarBrujula);}}
-function cerrarCamara(){document.getElementById('cameraModal').classList.remove('show');if(cameraStream){cameraStream.getTracks().forEach(function(t){t.stop();});cameraStream=null;}var u=(camaraTipo==='VP')?document.getElementById('vp-unidad').value.trim():document.getElementById('ev-unidad').value.trim(),c=(camaraTipo==='VP')?contadorFotosVP:contadorFotosEV,k=getContadorKey(u,camaraTipo,camaraSubtipo);if(c[k]&&c[k]>0)c[k]--;localStorage.setItem('rapca_contadores_'+camaraTipo,JSON.stringify(c));}
+function cerrarCamara(){document.getElementById('cameraModal').classList.remove('show');if(cameraStream){cameraStream.getTracks().forEach(function(t){t.stop();});cameraStream=null;}var u=(camaraTipo==='VP')?document.getElementById('vp-unidad').value.trim():(camaraTipo==='EL')?document.getElementById('el-unidad').value.trim():document.getElementById('ev-unidad').value.trim();var c=getContadorObj(camaraTipo);var k=getContadorKey(u,camaraTipo,camaraSubtipo);if(c[k]&&c[k]>0)c[k]--;localStorage.setItem(getContadorLSKey(camaraTipo),JSON.stringify(c));}
 
 function dibujarMapaEnCanvas(ctx,x,y,w,h){
   if(!currentLat||!currentLon||mapTilesLoaded.length===0){ctx.fillStyle='#d4e6d4';ctx.fillRect(x,y,w,h);ctx.fillStyle='#666';ctx.font='36px Arial';ctx.fillText('Mapa no disponible',x+w/2-180,y+h/2);return;}
@@ -643,7 +678,7 @@ function aceptarFoto(){
   var upCanvas=document.createElement('canvas');upCanvas.width=1530;upCanvas.height=2040;
   upCanvas.getContext('2d').drawImage(canvas,0,0,3060,4080,0,0,1530,2040);
   var upData=upCanvas.toDataURL('image/jpeg',0.85);
-  var upUnidad=(camaraTipo==='VP')?document.getElementById('vp-unidad').value.trim():document.getElementById('ev-unidad').value.trim();
+  var upUnidad=(camaraTipo==='VP')?document.getElementById('vp-unidad').value.trim():(camaraTipo==='EL')?document.getElementById('el-unidad').value.trim():document.getElementById('ev-unidad').value.trim();
   guardarSubidaPendiente(codigo,upData,upUnidad,camaraTipo);
   if(isOnline)subirFotoNube(codigo,upData,upUnidad,camaraTipo);
   agregarFotoALista(codigo);
@@ -692,7 +727,7 @@ function initPreviewListeners(){
   prev.addEventListener('touchstart',function(e){if(!modoAnotacion)return;e.preventDefault();var t=e.touches[0];handleTap(t.clientX,t.clientY);},{passive:false});
 }
 
-function agregarFotoALista(c){var lId,iId;if(camaraTipo==='VP'){if(camaraSubtipo==='general'){lId='vp-fotos-lista';iId='vp-fotos';}else if(camaraSubtipo==='W1'){lId='vp-fc1-lista';iId='vp-fc1';}else{lId='vp-fc2-lista';iId='vp-fc2';}}else{if(camaraSubtipo==='general'){lId='ev-fotos-lista';iId='ev-fotos';}else if(camaraSubtipo==='W1'){lId='ev-fc1-lista';iId='ev-fc1';}else{lId='ev-fc2-lista';iId='ev-fc2';}}document.getElementById(lId).innerHTML+='<span class="foto-tag">'+c+'</span>';var inp=document.getElementById(iId);inp.value=inp.value?(inp.value+', '+c):c;}
+function agregarFotoALista(c){var lId,iId,pre=(camaraTipo==='VP')?'vp':(camaraTipo==='EL')?'el':'ev';if(camaraSubtipo==='general'){lId=pre+'-fotos-lista';iId=pre+'-fotos';}else if(camaraSubtipo==='W1'){lId=pre+'-fc1-lista';iId=pre+'-fc1';}else{lId=pre+'-fc2-lista';iId=pre+'-fc2';}document.getElementById(lId).innerHTML+='<span class="foto-tag">'+c+'</span>';var inp=document.getElementById(iId);inp.value=inp.value?(inp.value+', '+c):c;}
 
 // --- Autenticación y Sesiones ---
 function iniciarSesion(){
@@ -712,10 +747,18 @@ function iniciarSesion(){
   })
   .catch(function(e){
     btn.textContent='Entrar';btn.disabled=false;
-    // Modo offline: intentar con sesión guardada
-    var saved=localStorage.getItem('rapca_sesion');
-    if(saved){sesionActual=JSON.parse(saved);ocultarLoginMostrarApp();showToast('Modo offline con sesión anterior','info');}
-    else{mostrarErrorLogin('Sin conexión y sin sesión guardada');}
+    // Backend no disponible: usar auth local
+    var result=loginLocal(email,pass);
+    if(result.ok){
+      sesionActual={token:result.token,email:result.usuario.email,nombre:result.usuario.nombre,rol:result.usuario.rol,id:result.usuario.id};
+      localStorage.setItem('rapca_sesion',JSON.stringify(sesionActual));
+      ocultarLoginMostrarApp();
+      showToast('Modo local (sin servidor)','info');
+    }else{
+      var saved=localStorage.getItem('rapca_sesion');
+      if(saved){sesionActual=JSON.parse(saved);ocultarLoginMostrarApp();showToast('Sesión anterior restaurada','info');}
+      else{mostrarErrorLogin(result.error);}
+    }
   });
 }
 function mostrarErrorLogin(msg){var el=document.getElementById('loginError');el.textContent=msg;el.classList.add('show');}
@@ -723,6 +766,8 @@ function validarSesion(){
   var saved=localStorage.getItem('rapca_sesion');
   if(!saved)return;
   sesionActual=JSON.parse(saved);
+  // Si es token local, validar directamente
+  if(sesionActual.token&&sesionActual.token.indexOf('local_')===0){ocultarLoginMostrarApp();return;}
   if(!isOnline){ocultarLoginMostrarApp();return;}
   fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'validar',token:sesionActual.token})})
   .then(function(r){return r.json();})
@@ -730,7 +775,7 @@ function validarSesion(){
     if(data.ok){sesionActual.nombre=data.usuario.nombre;sesionActual.rol=data.usuario.rol;localStorage.setItem('rapca_sesion',JSON.stringify(sesionActual));ocultarLoginMostrarApp();}
     else{localStorage.removeItem('rapca_sesion');sesionActual=null;document.getElementById('loginOverlay').classList.remove('hidden');}
   })
-  .catch(function(){ocultarLoginMostrarApp();}); // Offline: usar sesión guardada
+  .catch(function(){ocultarLoginMostrarApp();}); // Sin servidor: usar sesión guardada
 }
 function cerrarSesion(){
   if(sesionActual&&sesionActual.token&&isOnline){
@@ -758,57 +803,70 @@ function crearUsuario(){
   var pass=document.getElementById('admin-nuevo-pass').value;
   var rol=document.getElementById('admin-nuevo-rol').value;
   if(!email||!nombre||!pass){showToast('Todos los campos son obligatorios','error');return;}
-  fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'crear_usuario',token:sesionActual.token,nuevo_email:email,nuevo_nombre:nombre,nuevo_password:pass,nuevo_rol:rol})})
-  .then(function(r){return r.json();})
-  .then(function(data){
-    if(data.ok){showToast('Usuario creado','success');document.getElementById('admin-nuevo-email').value='';document.getElementById('admin-nuevo-nombre').value='';document.getElementById('admin-nuevo-pass').value='';cargarListaUsuarios();}
-    else{showToast(data.error||'Error','error');}
-  }).catch(function(){showToast('Error de conexión','error');});
+  // Guardar siempre en local
+  var localResult=crearUsuarioLocal(email,nombre,pass,rol);
+  if(!localResult.ok){showToast(localResult.error||'Error','error');return;}
+  document.getElementById('admin-nuevo-email').value='';document.getElementById('admin-nuevo-nombre').value='';document.getElementById('admin-nuevo-pass').value='';
+  showToast('Usuario creado','success');
+  cargarListaUsuarios();
+  // Intentar sincronizar con servidor
+  if(isOnline){
+    fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'crear_usuario',token:sesionActual.token,nuevo_email:email,nuevo_nombre:nombre,nuevo_password:pass,nuevo_rol:rol})}).catch(function(){});
+  }
 }
 function cargarListaUsuarios(){
-  if(!sesionActual||sesionActual.rol!=='admin'||!isOnline)return;
-  fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'listar_usuarios',token:sesionActual.token})})
-  .then(function(r){return r.json();})
-  .then(function(data){
-    if(!data.ok)return;
+  if(!sesionActual||sesionActual.rol!=='admin')return;
+  // Intentar del servidor, si falla usar datos locales
+  function renderUsuarios(usuarios){
     var el=document.getElementById('listaUsuarios');if(!el)return;
     var filtro=document.getElementById('admin-filtro-email');
     if(filtro){
       var opts='<option value="">-- Todos --</option>';
-      data.usuarios.forEach(function(u){opts+='<option value="'+u.email+'">'+u.nombre+' ('+u.email+')</option>';});
+      usuarios.forEach(function(u){opts+='<option value="'+u.email+'">'+u.nombre+' ('+u.email+')</option>';});
       filtro.innerHTML=opts;
     }
     var h='';
-    data.usuarios.forEach(function(u){
-      var activo=u.activo==1;
+    usuarios.forEach(function(u){
+      var activo=u.activo==1||u.activo===undefined;
       h+='<div class="user-card'+(activo?'':' inactive')+'">';
       h+='<div class="uc-info"><div class="uc-name">'+u.nombre+'</div><div class="uc-email">'+u.email+'</div><span class="uc-role'+(u.rol==='admin'?' admin':'')+'">'+u.rol+'</span></div>';
       h+='<div class="uc-actions">';
       h+='<button style="background:#f39c12" onclick="cambiarPasswordUsuario('+u.id+')">🔑</button>';
-      h+='<button style="background:'+(activo?'#e74c3c':'#27ae60')+'" onclick="toggleUsuario('+u.id+')">'+( activo?'⏸':'▶')+'</button>';
-      h+='<button style="background:#c0392b" onclick="eliminarUsuario('+u.id+',\''+u.email.replace(/'/g,"\\'") +'\')">🗑️</button>';
+      h+='<button style="background:'+(activo?'#e74c3c':'#27ae60')+'" onclick="toggleUsuario('+u.id+')">'+(activo?'⏸':'▶')+'</button>';
+      h+='<button style="background:#c0392b" onclick="eliminarUsuario('+u.id+',\''+u.email.replace(/'/g,"\\'")+'\')">🗑️</button>';
       h+='</div></div>';
     });
     el.innerHTML=h;
-  }).catch(function(){});
+  }
+  if(isOnline){
+    fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'listar_usuarios',token:sesionActual.token})})
+    .then(function(r){return r.json();})
+    .then(function(data){if(data.ok)renderUsuarios(data.usuarios);else renderUsuarios(getUsuariosLocal());})
+    .catch(function(){renderUsuarios(getUsuariosLocal());});
+  }else{renderUsuarios(getUsuariosLocal());}
 }
 function toggleUsuario(id){
-  fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'toggle_usuario',token:sesionActual.token,usuario_id:id})})
-  .then(function(r){return r.json();})
-  .then(function(data){if(data.ok){showToast('Estado cambiado','success');cargarListaUsuarios();}else showToast(data.error||'Error','error');}).catch(function(){showToast('Error de conexión','error');});
+  // Toggle local
+  var users=getUsuariosLocal();
+  users.forEach(function(u){if(u.id===id)u.activo=u.activo?0:1;});
+  guardarUsuariosLocal(users);
+  cargarListaUsuarios();showToast('Estado cambiado','success');
+  if(isOnline)fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'toggle_usuario',token:sesionActual.token,usuario_id:id})}).catch(function(){});
 }
 function cambiarPasswordUsuario(id){
   var nueva=prompt('Nueva contraseña:');
   if(!nueva||!nueva.trim())return;
-  fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'cambiar_password',token:sesionActual.token,usuario_id:id,nueva_password:nueva.trim()})})
-  .then(function(r){return r.json();})
-  .then(function(data){if(data.ok)showToast('Contraseña cambiada','success');else showToast(data.error||'Error','error');}).catch(function(){showToast('Error de conexión','error');});
+  var users=getUsuariosLocal();
+  users.forEach(function(u){if(u.id===id)u.password=nueva.trim();});
+  guardarUsuariosLocal(users);
+  showToast('Contraseña cambiada','success');
+  if(isOnline)fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'cambiar_password',token:sesionActual.token,usuario_id:id,nueva_password:nueva.trim()})}).catch(function(){});
 }
 function eliminarUsuario(id,email){
   if(!confirm('¿Eliminar usuario '+email+'? Se perderán sus sesiones.'))return;
-  fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'eliminar_usuario',token:sesionActual.token,usuario_id:id})})
-  .then(function(r){return r.json();})
-  .then(function(data){if(data.ok){showToast('Usuario eliminado','success');cargarListaUsuarios();}else showToast(data.error||'Error','error');}).catch(function(){showToast('Error de conexión','error');});
+  guardarUsuariosLocal(getUsuariosLocal().filter(function(u){return u.id!==id;}));
+  cargarListaUsuarios();showToast('Usuario eliminado','success');
+  if(isOnline)fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'eliminar_usuario',token:sesionActual.token,usuario_id:id})}).catch(function(){});
 }
 // --- Registros del Servidor (Admin) ---
 function cargarRegistrosServidor(){
@@ -836,6 +894,9 @@ function sincronizarRegistroServidor(registro){
 }
 
 document.addEventListener('DOMContentLoaded',function(){
+  // Inicializar usuarios locales y migrar datos
+  initUsuariosLocal();
+  migrarRegistrosEVaEI();
   // Comprobar sesión antes de iniciar app
   var saved=localStorage.getItem('rapca_sesion');
   if(saved){
@@ -856,8 +917,8 @@ function initApp(){
     actualizarContadorSubidas();
     procesarSubidasPendientes();
   });
-  var t=new Date().toISOString().split('T')[0];document.getElementById('vp-fecha').value=t;document.getElementById('ev-fecha').value=t;
-  var cVP=localStorage.getItem('rapca_contadores_VP'),cEV=localStorage.getItem('rapca_contadores_EV');if(cVP)contadorFotosVP=JSON.parse(cVP);if(cEV)contadorFotosEV=JSON.parse(cEV);
+  var t=new Date().toISOString().split('T')[0];document.getElementById('vp-fecha').value=t;document.getElementById('ev-fecha').value=t;document.getElementById('el-fecha').value=t;
+  var cVP=localStorage.getItem('rapca_contadores_VP'),cEI=localStorage.getItem('rapca_contadores_EI'),cEV=localStorage.getItem('rapca_contadores_EV'),cEL=localStorage.getItem('rapca_contadores_EL');if(cVP)contadorFotosVP=JSON.parse(cVP);if(cEI)contadorFotosEV=JSON.parse(cEI);else if(cEV)contadorFotosEV=JSON.parse(cEV);if(cEL)contadorFotosEL=JSON.parse(cEL);
   generarPlantas();generarPalatables();generarHerbaceas();updateSyncStatus();updatePendingCount();loadPanel();cargarBorradores();iniciarGeolocalizacion();initPreviewListeners();initCamposExtra();
   window.addEventListener('online',function(){isOnline=true;updateSyncStatus();procesarSubidasPendientes();});window.addEventListener('offline',function(){isOnline=false;updateSyncStatus();});
   document.addEventListener('click',function(e){if(!e.target.closest('.autocomplete-wrapper'))document.querySelectorAll('.autocomplete-list').forEach(function(l){l.classList.remove('show');});});
@@ -879,20 +940,25 @@ function showAutocomplete(i){var l=document.getElementById('ac-'+i.id);if(!l)ret
 function filterAutocomplete(i){if(currentAutocomplete&&currentAutocomplete.input===i)renderAutocompleteList(i.value);}
 function renderAutocompleteList(f){if(!currentAutocomplete)return;var l=currentAutocomplete.list,fL=f.toLowerCase(),h='';PLANTAS.filter(function(p){return p.toLowerCase().indexOf(fL)!==-1;}).forEach(function(p){h+='<div class="autocomplete-item" onclick="selectAutocomplete(\''+p.replace(/'/g,"\\'")+'\')">'+p+'</div>';});l.innerHTML=h||'<div class="autocomplete-item" style="color:#999">Sin resultados</div>';}
 function selectAutocomplete(v){if(currentAutocomplete){currentAutocomplete.input.value=v;currentAutocomplete.list.classList.remove('show');actualizarResumenMatorral();currentAutocomplete=null;}}
-function showPage(p){var pages=['menu','vp','ev','mapa','ganadero','infra','panel','dashboard','timeline','comparador'];document.querySelectorAll('.page').forEach(function(x){x.classList.remove('active');});document.querySelectorAll('.nav-btn').forEach(function(b){b.classList.remove('active');});document.getElementById('page-'+p).classList.add('active');var idx=pages.indexOf(p);if(idx>=0)document.querySelectorAll('.nav-btn')[idx].classList.add('active');if(p==='panel')loadPanel();if(p==='mapa'){setTimeout(function(){initMapa();if(mapaLeaflet)mapaLeaflet.invalidateSize();},100);}if(p==='ganadero')cargarListaGanaderos();if(p==='infra')cargarListaInfra();if(p==='dashboard'&&typeof initDashboard==='function')initDashboard();if(p==='timeline'&&typeof initTimeline==='function')initTimeline();if(p==='comparador'&&typeof initComparador==='function')initComparador();window.scrollTo(0,0);}
+function showPage(p){var pages=['menu','vp','el','ev','mapa','ganadero','infra','panel','dashboard','timeline','comparador'];document.querySelectorAll('.page').forEach(function(x){x.classList.remove('active');});document.querySelectorAll('.nav-btn').forEach(function(b){b.classList.remove('active');});document.getElementById('page-'+p).classList.add('active');var idx=pages.indexOf(p);if(idx>=0)document.querySelectorAll('.nav-btn')[idx].classList.add('active');if(p==='panel')loadPanel();if(p==='mapa'){setTimeout(function(){initMapa();if(mapaLeaflet)mapaLeaflet.invalidateSize();},100);}if(p==='ganadero')cargarListaGanaderos();if(p==='infra')cargarListaInfra();if(p==='dashboard'&&typeof initDashboard==='function')initDashboard();if(p==='timeline'&&typeof initTimeline==='function')initTimeline();if(p==='comparador'&&typeof initComparador==='function')initComparador();window.scrollTo(0,0);}
 function toggleSection(id){document.getElementById(id).classList.toggle('open');}
-function setTransecto(n){transectoActual=n;document.querySelectorAll('.transecto-btn').forEach(function(b,i){b.classList.toggle('active',i===n-1);});document.getElementById('btnGuardarEV').textContent='💾 Guardar EV - T'+n;}
-function guardarBorradores(){localStorage.setItem('rapca_borrador_vp',JSON.stringify(obtenerDatosVP()));localStorage.setItem('rapca_borrador_ev',JSON.stringify(obtenerDatosEV()));}
-function cargarBorradores(){try{var bVP=localStorage.getItem('rapca_borrador_vp');if(bVP)cargarDatosVP(JSON.parse(bVP));var bEV=localStorage.getItem('rapca_borrador_ev');if(bEV)cargarDatosEV(JSON.parse(bEV));}catch(e){}}
+function setTransecto(n){transectoActual=n;document.querySelectorAll('.transecto-btn').forEach(function(b,i){b.classList.toggle('active',i===n-1);});document.getElementById('btnGuardarEV').textContent='💾 Guardar EI - T'+n;}
+function guardarBorradores(){localStorage.setItem('rapca_borrador_vp',JSON.stringify(obtenerDatosVP()));localStorage.setItem('rapca_borrador_ev',JSON.stringify(obtenerDatosEV()));localStorage.setItem('rapca_borrador_el',JSON.stringify(obtenerDatosEL()));}
+function cargarBorradores(){try{var bVP=localStorage.getItem('rapca_borrador_vp');if(bVP)cargarDatosVP(JSON.parse(bVP));var bEV=localStorage.getItem('rapca_borrador_ev');if(bEV)cargarDatosEV(JSON.parse(bEV));var bEL=localStorage.getItem('rapca_borrador_el');if(bEL)cargarDatosEL(JSON.parse(bEL));}catch(e){}}
 function obtenerDatosVP(){return{fecha:document.getElementById('vp-fecha').value,zona:document.getElementById('vp-zona').value,unidad:document.getElementById('vp-unidad').value,past1:document.getElementById('vp-past1').value,past2:document.getElementById('vp-past2').value,past3:document.getElementById('vp-past3').value,senal:document.getElementById('vp-senal').value,veredas:document.getElementById('vp-veredas').value,cagarrutas:document.getElementById('vp-cagarrutas').value,fotos:document.getElementById('vp-fotos').value,fc1:document.getElementById('vp-fc1').value,fc2:document.getElementById('vp-fc2').value,obs:document.getElementById('vp-obs').value};}
 function cargarDatosVP(d){if(d.fecha)document.getElementById('vp-fecha').value=d.fecha;if(d.zona)document.getElementById('vp-zona').value=d.zona;if(d.unidad)document.getElementById('vp-unidad').value=d.unidad;if(d.past1)document.getElementById('vp-past1').value=d.past1;if(d.past2)document.getElementById('vp-past2').value=d.past2;if(d.past3)document.getElementById('vp-past3').value=d.past3;if(d.senal)document.getElementById('vp-senal').value=d.senal;if(d.veredas)document.getElementById('vp-veredas').value=d.veredas;if(d.cagarrutas)document.getElementById('vp-cagarrutas').value=d.cagarrutas;if(d.fotos){document.getElementById('vp-fotos').value=d.fotos;actualizarListaFotos('vp-fotos-lista',d.fotos);}if(d.fc1){document.getElementById('vp-fc1').value=d.fc1;actualizarListaFotos('vp-fc1-lista',d.fc1);}if(d.fc2){document.getElementById('vp-fc2').value=d.fc2;actualizarListaFotos('vp-fc2-lista',d.fc2);}if(d.obs)document.getElementById('vp-obs').value=d.obs;}
 function obtenerDatosEV(){var d={fecha:document.getElementById('ev-fecha').value,zona:document.getElementById('ev-zona').value,unidad:document.getElementById('ev-unidad').value,transecto:transectoActual,plantas:[],palatables:[],past1:document.getElementById('ev-past1').value,past2:document.getElementById('ev-past2').value,past3:document.getElementById('ev-past3').value,herbaceas:[],mat1cob:document.getElementById('ev-mat1cob').value,mat1alt:document.getElementById('ev-mat1alt').value,mat1esp:document.getElementById('ev-mat1esp').value,mat2cob:document.getElementById('ev-mat2cob').value,mat2alt:document.getElementById('ev-mat2alt').value,mat2esp:document.getElementById('ev-mat2esp').value,fotos:document.getElementById('ev-fotos').value,fc1:document.getElementById('ev-fc1').value,fc2:document.getElementById('ev-fc2').value,obs:document.getElementById('ev-obs').value};for(var i=1;i<=10;i++){var p={nombre:document.getElementById('ev-planta'+i).value,notas:[]};for(var n=1;n<=10;n++)p.notas.push(document.getElementById('ev-planta'+i+'-n'+n).value);d.plantas.push(p);}for(var i=1;i<=3;i++){var p={nombre:document.getElementById('ev-palatable'+i).value,notas:[]};for(var n=1;n<=15;n++)p.notas.push(document.getElementById('ev-palatable'+i+'-n'+n).value);d.palatables.push(p);}for(var i=1;i<=7;i++)d.herbaceas.push(document.getElementById('ev-herb'+i).value);return d;}
 function cargarDatosEV(d){if(d.fecha)document.getElementById('ev-fecha').value=d.fecha;if(d.zona)document.getElementById('ev-zona').value=d.zona;if(d.unidad)document.getElementById('ev-unidad').value=d.unidad;if(d.transecto)setTransecto(d.transecto);if(d.plantas)for(var i=0;i<d.plantas.length&&i<10;i++){document.getElementById('ev-planta'+(i+1)).value=d.plantas[i].nombre||'';for(var n=0;n<d.plantas[i].notas.length&&n<10;n++)document.getElementById('ev-planta'+(i+1)+'-n'+(n+1)).value=d.plantas[i].notas[n]||'';}if(d.palatables)for(var i=0;i<d.palatables.length&&i<3;i++){document.getElementById('ev-palatable'+(i+1)).value=d.palatables[i].nombre||'';for(var n=0;n<d.palatables[i].notas.length&&n<15;n++)document.getElementById('ev-palatable'+(i+1)+'-n'+(n+1)).value=d.palatables[i].notas[n]||'';}if(d.past1)document.getElementById('ev-past1').value=d.past1;if(d.past2)document.getElementById('ev-past2').value=d.past2;if(d.past3)document.getElementById('ev-past3').value=d.past3;if(d.herbaceas)for(var i=0;i<7;i++)document.getElementById('ev-herb'+(i+1)).value=d.herbaceas[i]||'';if(d.mat1cob)document.getElementById('ev-mat1cob').value=d.mat1cob;if(d.mat1alt)document.getElementById('ev-mat1alt').value=d.mat1alt;if(d.mat1esp)document.getElementById('ev-mat1esp').value=d.mat1esp;if(d.mat2cob)document.getElementById('ev-mat2cob').value=d.mat2cob;if(d.mat2alt)document.getElementById('ev-mat2alt').value=d.mat2alt;if(d.mat2esp)document.getElementById('ev-mat2esp').value=d.mat2esp;if(d.fotos){document.getElementById('ev-fotos').value=d.fotos;actualizarListaFotos('ev-fotos-lista',d.fotos);}if(d.fc1){document.getElementById('ev-fc1').value=d.fc1;actualizarListaFotos('ev-fc1-lista',d.fc1);}if(d.fc2){document.getElementById('ev-fc2').value=d.fc2;actualizarListaFotos('ev-fc2-lista',d.fc2);}if(d.obs)document.getElementById('ev-obs').value=d.obs;actualizarEstadisticasPlantas();actualizarEstadisticasPalatables();actualizarMediaHerbaceas();actualizarResumenMatorral();}
 function actualizarListaFotos(lId,f){var l=document.getElementById(lId);if(!l||!f)return;l.innerHTML=f.split(',').map(function(x){return x.trim();}).filter(function(x){return x;}).map(function(x){return'<span class="foto-tag">'+x+'</span>';}).join('');}
 function limpiarFormularioVP(){var t=new Date().toISOString().split('T')[0];document.getElementById('vp-fecha').value=t;document.getElementById('vp-zona').value='';document.getElementById('vp-unidad').value='';['vp-past1','vp-past2','vp-past3','vp-senal','vp-veredas','vp-cagarrutas','vp-fotos','vp-fc1','vp-fc2','vp-obs'].forEach(function(id){document.getElementById(id).value='';});['vp-fotos-lista','vp-fc1-lista','vp-fc2-lista'].forEach(function(id){document.getElementById(id).innerHTML='';});contadorFotosVP={};localStorage.setItem('rapca_contadores_VP',JSON.stringify(contadorFotosVP));localStorage.removeItem('rapca_borrador_vp');}
-function limpiarFormularioEV(c){if(c){var t=new Date().toISOString().split('T')[0];document.getElementById('ev-fecha').value=t;document.getElementById('ev-zona').value='';document.getElementById('ev-unidad').value='';setTransecto(1);contadorFotosEV={};localStorage.setItem('rapca_contadores_EV',JSON.stringify(contadorFotosEV));localStorage.removeItem('rapca_borrador_ev');}for(var i=1;i<=10;i++){document.getElementById('ev-planta'+i).value='';for(var n=1;n<=10;n++)document.getElementById('ev-planta'+i+'-n'+n).value='';}for(var i=1;i<=3;i++){document.getElementById('ev-palatable'+i).value='';for(var n=1;n<=15;n++)document.getElementById('ev-palatable'+i+'-n'+n).value='';var el=document.getElementById('media-palatable'+i);if(el)el.textContent='';}for(var i=1;i<=7;i++)document.getElementById('ev-herb'+i).value='';['ev-past1','ev-past2','ev-past3','ev-mat1cob','ev-mat1alt','ev-mat1esp','ev-mat2cob','ev-mat2alt','ev-mat2esp','ev-fotos','ev-fc1','ev-fc2','ev-obs'].forEach(function(id){document.getElementById(id).value='';});['ev-fotos-lista','ev-fc1-lista','ev-fc2-lista'].forEach(function(id){document.getElementById(id).innerHTML='';});actualizarEstadisticasPlantas();actualizarEstadisticasPalatables();actualizarMediaHerbaceas();actualizarResumenMatorral();window.scrollTo(0,0);}
+// --- EL (Evaluación Ligera) --- Mismos campos que VP
+function obtenerDatosEL(){return{fecha:document.getElementById('el-fecha').value,zona:document.getElementById('el-zona').value,unidad:document.getElementById('el-unidad').value,past1:document.getElementById('el-past1').value,past2:document.getElementById('el-past2').value,past3:document.getElementById('el-past3').value,senal:document.getElementById('el-senal').value,veredas:document.getElementById('el-veredas').value,cagarrutas:document.getElementById('el-cagarrutas').value,fotos:document.getElementById('el-fotos').value,fc1:document.getElementById('el-fc1').value,fc2:document.getElementById('el-fc2').value,obs:document.getElementById('el-obs').value};}
+function cargarDatosEL(d){if(d.fecha)document.getElementById('el-fecha').value=d.fecha;if(d.zona)document.getElementById('el-zona').value=d.zona;if(d.unidad)document.getElementById('el-unidad').value=d.unidad;if(d.past1)document.getElementById('el-past1').value=d.past1;if(d.past2)document.getElementById('el-past2').value=d.past2;if(d.past3)document.getElementById('el-past3').value=d.past3;if(d.senal)document.getElementById('el-senal').value=d.senal;if(d.veredas)document.getElementById('el-veredas').value=d.veredas;if(d.cagarrutas)document.getElementById('el-cagarrutas').value=d.cagarrutas;if(d.fotos){document.getElementById('el-fotos').value=d.fotos;actualizarListaFotos('el-fotos-lista',d.fotos);}if(d.fc1){document.getElementById('el-fc1').value=d.fc1;actualizarListaFotos('el-fc1-lista',d.fc1);}if(d.fc2){document.getElementById('el-fc2').value=d.fc2;actualizarListaFotos('el-fc2-lista',d.fc2);}if(d.obs)document.getElementById('el-obs').value=d.obs;}
+function guardarEL(){var z=document.getElementById('el-zona').value.trim(),u=document.getElementById('el-unidad').value.trim();if(!z||!u){showToast('Zona y Unidad obligatorios','error');return;}var d={pastoreo:[document.getElementById('el-past1').value,document.getElementById('el-past2').value,document.getElementById('el-past3').value],observacionPastoreo:{senal:document.getElementById('el-senal').value,veredas:document.getElementById('el-veredas').value,cagarrutas:document.getElementById('el-cagarrutas').value},fotos:document.getElementById('el-fotos').value,fotosComp:[{numero:document.getElementById('el-fc1').value,waypoint:'W1'},{numero:document.getElementById('el-fc2').value,waypoint:'W2'}],observaciones:document.getElementById('el-obs').value};var r={id:editandoId||Date.now(),tipo:'EL',fecha:document.getElementById('el-fecha').value,zona:z,unidad:u,transecto:'',datos:d,enviado:false,lat:currentLat,lon:currentLon};if(sesionActual){r.operador_email=sesionActual.email;r.operador_nombre=sesionActual.nombre;}if(editandoId){actualizarRegistro(r);editandoId=null;}else guardarLocal(r);showToast('EL guardado','success');limpiarFormularioEL();if(isOnline){enviarRegistro(r);sincronizarRegistroServidor(r);}}
+function limpiarFormularioEL(){var t=new Date().toISOString().split('T')[0];document.getElementById('el-fecha').value=t;document.getElementById('el-zona').value='';document.getElementById('el-unidad').value='';['el-past1','el-past2','el-past3','el-senal','el-veredas','el-cagarrutas','el-fotos','el-fc1','el-fc2','el-obs'].forEach(function(id){document.getElementById(id).value='';});['el-fotos-lista','el-fc1-lista','el-fc2-lista'].forEach(function(id){document.getElementById(id).innerHTML='';});contadorFotosEL={};localStorage.setItem('rapca_contadores_EL',JSON.stringify(contadorFotosEL));localStorage.removeItem('rapca_borrador_el');}
+function limpiarFormularioEV(c){if(c){var t=new Date().toISOString().split('T')[0];document.getElementById('ev-fecha').value=t;document.getElementById('ev-zona').value='';document.getElementById('ev-unidad').value='';setTransecto(1);contadorFotosEV={};localStorage.setItem('rapca_contadores_EI',JSON.stringify(contadorFotosEV));localStorage.removeItem('rapca_borrador_ev');}for(var i=1;i<=10;i++){document.getElementById('ev-planta'+i).value='';for(var n=1;n<=10;n++)document.getElementById('ev-planta'+i+'-n'+n).value='';}for(var i=1;i<=3;i++){document.getElementById('ev-palatable'+i).value='';for(var n=1;n<=15;n++)document.getElementById('ev-palatable'+i+'-n'+n).value='';var el=document.getElementById('media-palatable'+i);if(el)el.textContent='';}for(var i=1;i<=7;i++)document.getElementById('ev-herb'+i).value='';['ev-past1','ev-past2','ev-past3','ev-mat1cob','ev-mat1alt','ev-mat1esp','ev-mat2cob','ev-mat2alt','ev-mat2esp','ev-fotos','ev-fc1','ev-fc2','ev-obs'].forEach(function(id){document.getElementById(id).value='';});['ev-fotos-lista','ev-fc1-lista','ev-fc2-lista'].forEach(function(id){document.getElementById(id).innerHTML='';});actualizarEstadisticasPlantas();actualizarEstadisticasPalatables();actualizarMediaHerbaceas();actualizarResumenMatorral();window.scrollTo(0,0);}
 function guardarVP(){var z=document.getElementById('vp-zona').value.trim(),u=document.getElementById('vp-unidad').value.trim();if(!z||!u){showToast('Zona y Unidad obligatorios','error');return;}var d={pastoreo:[document.getElementById('vp-past1').value,document.getElementById('vp-past2').value,document.getElementById('vp-past3').value],observacionPastoreo:{senal:document.getElementById('vp-senal').value,veredas:document.getElementById('vp-veredas').value,cagarrutas:document.getElementById('vp-cagarrutas').value},fotos:document.getElementById('vp-fotos').value,fotosComp:[{numero:document.getElementById('vp-fc1').value,waypoint:'W1'},{numero:document.getElementById('vp-fc2').value,waypoint:'W2'}],observaciones:document.getElementById('vp-obs').value};var r={id:editandoId||Date.now(),tipo:'VP',fecha:document.getElementById('vp-fecha').value,zona:z,unidad:u,transecto:'',datos:d,enviado:false,lat:currentLat,lon:currentLon};if(sesionActual){r.operador_email=sesionActual.email;r.operador_nombre=sesionActual.nombre;}if(editandoId){actualizarRegistro(r);editandoId=null;}else guardarLocal(r);showToast('VP guardado','success');limpiarFormularioVP();if(isOnline){enviarRegistro(r);sincronizarRegistroServidor(r);}}
-function guardarEV(){var z=document.getElementById('ev-zona').value.trim(),u=document.getElementById('ev-unidad').value.trim();if(!z||!u){showToast('Zona y Unidad obligatorios','error');return;}var pl=[];for(var i=1;i<=10;i++){var nt=[],c=0,s=0;for(var n=1;n<=10;n++){var v=document.getElementById('ev-planta'+i+'-n'+n).value;nt.push(v);if(v!==''){c++;s+=parseInt(v);}}pl.push({nombre:document.getElementById('ev-planta'+i).value,notas:nt,media:c>0?(s/c).toFixed(2):''});}var pa=[],paTC=0,paTS=0;for(var i=1;i<=3;i++){var nt=[],c=0,s=0;for(var n=1;n<=15;n++){var v=document.getElementById('ev-palatable'+i+'-n'+n).value;nt.push(v);if(v!==''){c++;s+=parseInt(v);paTC++;paTS+=parseInt(v);}}pa.push({nombre:document.getElementById('ev-palatable'+i).value,notas:nt,media:c>0?(s/c).toFixed(2):''});}var hb=[];for(var i=1;i<=7;i++)hb.push(document.getElementById('ev-herb'+i).value);var c1=parseFloat(document.getElementById('ev-mat1cob').value)||0,c2=parseFloat(document.getElementById('ev-mat2cob').value)||0,a1=parseFloat(document.getElementById('ev-mat1alt').value)||0,a2=parseFloat(document.getElementById('ev-mat2alt').value)||0;var nC=(document.getElementById('ev-mat1cob').value!==''?1:0)+(document.getElementById('ev-mat2cob').value!==''?1:0),nA=(document.getElementById('ev-mat1alt').value!==''?1:0)+(document.getElementById('ev-mat2alt').value!==''?1:0);var mediaCob=nC>0?((c1+c2)/nC).toFixed(1):'',mediaAlt=nA>0?((a1+a2)/nA).toFixed(1):'',volumen=calcularVolumenMatorral(parseFloat(mediaCob),parseFloat(mediaAlt))||'';var pC=0,pS=0;for(var i=1;i<=10;i++)for(var n=1;n<=10;n++){var v=document.getElementById('ev-planta'+i+'-n'+n).value;if(v!==''){pC++;pS+=parseInt(v);}}var hC=0,hS=0;for(var i=1;i<=7;i++){var v=document.getElementById('ev-herb'+i).value;if(v!==''){hC++;hS+=parseInt(v);}}var d={plantas:pl,plantasMedia:pC>0?(pS/pC).toFixed(2):'',palatables:pa,palatablesMedia:paTC>0?(paTS/paTC).toFixed(2):'',pastoreo:[document.getElementById('ev-past1').value,document.getElementById('ev-past2').value,document.getElementById('ev-past3').value],herbaceas:hb,herbaceasMedia:hC>0?(hS/hC).toFixed(2):'',matorral:{punto1:{cobertura:document.getElementById('ev-mat1cob').value,altura:document.getElementById('ev-mat1alt').value,especie:document.getElementById('ev-mat1esp').value},punto2:{cobertura:document.getElementById('ev-mat2cob').value,altura:document.getElementById('ev-mat2alt').value,especie:document.getElementById('ev-mat2esp').value},mediaCob:mediaCob,mediaAlt:mediaAlt,volumen:volumen},fotos:document.getElementById('ev-fotos').value,fotosComp:[{numero:document.getElementById('ev-fc1').value,waypoint:'W1'},{numero:document.getElementById('ev-fc2').value,waypoint:'W2'}],observaciones:document.getElementById('ev-obs').value};var r={id:editandoId||Date.now(),tipo:'EV',fecha:document.getElementById('ev-fecha').value,zona:z,unidad:u,transecto:'T'+transectoActual,datos:d,enviado:false,lat:currentLat,lon:currentLon};if(sesionActual){r.operador_email=sesionActual.email;r.operador_nombre=sesionActual.nombre;}if(editandoId){actualizarRegistro(r);editandoId=null;}else guardarLocal(r);showToast('EV T'+transectoActual+' guardado','success');if(transectoActual>=3){limpiarFormularioEV(true);showToast('Unidad completada','info');}else{limpiarFormularioEV(false);setTransecto(transectoActual+1);}if(isOnline){enviarRegistro(r);sincronizarRegistroServidor(r);}}
+function guardarEV(){var z=document.getElementById('ev-zona').value.trim(),u=document.getElementById('ev-unidad').value.trim();if(!z||!u){showToast('Zona y Unidad obligatorios','error');return;}var pl=[];for(var i=1;i<=10;i++){var nt=[],c=0,s=0;for(var n=1;n<=10;n++){var v=document.getElementById('ev-planta'+i+'-n'+n).value;nt.push(v);if(v!==''){c++;s+=parseInt(v);}}pl.push({nombre:document.getElementById('ev-planta'+i).value,notas:nt,media:c>0?(s/c).toFixed(2):''});}var pa=[],paTC=0,paTS=0;for(var i=1;i<=3;i++){var nt=[],c=0,s=0;for(var n=1;n<=15;n++){var v=document.getElementById('ev-palatable'+i+'-n'+n).value;nt.push(v);if(v!==''){c++;s+=parseInt(v);paTC++;paTS+=parseInt(v);}}pa.push({nombre:document.getElementById('ev-palatable'+i).value,notas:nt,media:c>0?(s/c).toFixed(2):''});}var hb=[];for(var i=1;i<=7;i++)hb.push(document.getElementById('ev-herb'+i).value);var c1=parseFloat(document.getElementById('ev-mat1cob').value)||0,c2=parseFloat(document.getElementById('ev-mat2cob').value)||0,a1=parseFloat(document.getElementById('ev-mat1alt').value)||0,a2=parseFloat(document.getElementById('ev-mat2alt').value)||0;var nC=(document.getElementById('ev-mat1cob').value!==''?1:0)+(document.getElementById('ev-mat2cob').value!==''?1:0),nA=(document.getElementById('ev-mat1alt').value!==''?1:0)+(document.getElementById('ev-mat2alt').value!==''?1:0);var mediaCob=nC>0?((c1+c2)/nC).toFixed(1):'',mediaAlt=nA>0?((a1+a2)/nA).toFixed(1):'',volumen=calcularVolumenMatorral(parseFloat(mediaCob),parseFloat(mediaAlt))||'';var pC=0,pS=0;for(var i=1;i<=10;i++)for(var n=1;n<=10;n++){var v=document.getElementById('ev-planta'+i+'-n'+n).value;if(v!==''){pC++;pS+=parseInt(v);}}var hC=0,hS=0;for(var i=1;i<=7;i++){var v=document.getElementById('ev-herb'+i).value;if(v!==''){hC++;hS+=parseInt(v);}}var d={plantas:pl,plantasMedia:pC>0?(pS/pC).toFixed(2):'',palatables:pa,palatablesMedia:paTC>0?(paTS/paTC).toFixed(2):'',pastoreo:[document.getElementById('ev-past1').value,document.getElementById('ev-past2').value,document.getElementById('ev-past3').value],herbaceas:hb,herbaceasMedia:hC>0?(hS/hC).toFixed(2):'',matorral:{punto1:{cobertura:document.getElementById('ev-mat1cob').value,altura:document.getElementById('ev-mat1alt').value,especie:document.getElementById('ev-mat1esp').value},punto2:{cobertura:document.getElementById('ev-mat2cob').value,altura:document.getElementById('ev-mat2alt').value,especie:document.getElementById('ev-mat2esp').value},mediaCob:mediaCob,mediaAlt:mediaAlt,volumen:volumen},fotos:document.getElementById('ev-fotos').value,fotosComp:[{numero:document.getElementById('ev-fc1').value,waypoint:'W1'},{numero:document.getElementById('ev-fc2').value,waypoint:'W2'}],observaciones:document.getElementById('ev-obs').value};var r={id:editandoId||Date.now(),tipo:'EI',fecha:document.getElementById('ev-fecha').value,zona:z,unidad:u,transecto:'T'+transectoActual,datos:d,enviado:false,lat:currentLat,lon:currentLon};if(sesionActual){r.operador_email=sesionActual.email;r.operador_nombre=sesionActual.nombre;}if(editandoId){actualizarRegistro(r);editandoId=null;}else guardarLocal(r);showToast('EI T'+transectoActual+' guardado','success');if(transectoActual>=3){limpiarFormularioEV(true);showToast('Unidad completada','info');}else{limpiarFormularioEV(false);setTransecto(transectoActual+1);}if(isOnline){enviarRegistro(r);sincronizarRegistroServidor(r);}}
 function getRegistros(){var d=localStorage.getItem('rapca_registros');return d?JSON.parse(d):[];}
 function guardarLocal(r){var rs=getRegistros();rs.push(r);localStorage.setItem('rapca_registros',JSON.stringify(rs));updatePendingCount();}
 function actualizarRegistro(r){var rs=getRegistros();for(var i=0;i<rs.length;i++)if(rs[i].id===r.id){rs[i]=r;break;}localStorage.setItem('rapca_registros',JSON.stringify(rs));updatePendingCount();loadPanel();}
@@ -900,8 +966,8 @@ function marcarEnviado(id){var rs=getRegistros();for(var i=0;i<rs.length;i++)if(
 function updatePendingCount(){var rs=getRegistros(),p=rs.filter(function(x){return!x.enviado;}).length;document.getElementById('pendingCount').textContent=p;var b=document.getElementById('pendingBadge');b.style.display=p>0?'inline':'none';b.textContent=p;}
 function enviarRegistro(r){showLoading(true);var fd=new URLSearchParams();fd.append(ENTRY.tipo,r.tipo);fd.append(ENTRY.fecha,r.fecha);fd.append(ENTRY.zona,r.zona);fd.append(ENTRY.unidad,r.unidad);fd.append(ENTRY.transecto,r.transecto||'');fd.append(ENTRY.datos,JSON.stringify(r.datos));fetch(FORM_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:fd.toString()}).then(function(){showLoading(false);marcarEnviado(r.id);showToast('Enviado','success');}).catch(function(){showLoading(false);showToast('Guardado local','info');});}
 function syncPending(){var pend=getRegistros().filter(function(r){return!r.enviado;});if(pend.length===0){showToast('Sin pendientes','info');return;}if(!isOnline){showToast('Sin conexión','error');return;}showLoading(true);var total=pend.length,env=0;pend.forEach(function(r,idx){setTimeout(function(){var fd=new URLSearchParams();fd.append(ENTRY.tipo,r.tipo);fd.append(ENTRY.fecha,r.fecha);fd.append(ENTRY.zona,r.zona);fd.append(ENTRY.unidad,r.unidad);fd.append(ENTRY.transecto,r.transecto||'');fd.append(ENTRY.datos,JSON.stringify(r.datos));fetch(FORM_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:fd.toString()}).then(function(){marcarEnviado(r.id);sincronizarRegistroServidor(r);env++;if(env===total){showLoading(false);showToast(total+' sincronizados','success');}}).catch(function(){env++;if(env===total)showLoading(false);});},idx*600);});}
-function loadPanel(){var rs=getRegistros(),h='';if(rs.length===0)h='<p style="text-align:center;color:#888;padding:20px">No hay registros</p>';else rs.slice().reverse().forEach(function(r){var opInfo=r.operador_nombre?' | '+r.operador_nombre:'';h+='<div class="record-item"><span class="tipo '+r.tipo.toLowerCase()+'">'+r.tipo+'</span> <strong>'+r.zona+'>'+r.unidad+'</strong>'+(r.transecto?' ('+r.transecto+')':'')+'<div class="info">'+r.fecha+' | '+(r.enviado?'✅ Enviado':'⏳ Pendiente')+opInfo+'</div><div class="actions"><button class="btn-small edit" onclick="editarRegistro('+r.id+')">✏️</button><button class="btn-small pdf" onclick="exportarPDF('+r.id+')">📄</button><button class="btn-small delete" onclick="eliminarRegistro('+r.id+')">🗑️</button></div></div>';});document.getElementById('panelList').innerHTML=h;}
-function editarRegistro(id){var rs=getRegistros(),r=rs.find(function(x){return x.id===id;});if(!r)return;editandoId=id;if(r.tipo==='VP'){document.getElementById('vp-fecha').value=r.fecha;document.getElementById('vp-zona').value=r.zona;document.getElementById('vp-unidad').value=r.unidad;var d=r.datos;if(d.pastoreo){document.getElementById('vp-past1').value=d.pastoreo[0]||'';document.getElementById('vp-past2').value=d.pastoreo[1]||'';document.getElementById('vp-past3').value=d.pastoreo[2]||'';}if(d.observacionPastoreo){document.getElementById('vp-senal').value=d.observacionPastoreo.senal||'';document.getElementById('vp-veredas').value=d.observacionPastoreo.veredas||'';document.getElementById('vp-cagarrutas').value=d.observacionPastoreo.cagarrutas||'';}if(d.fotos){document.getElementById('vp-fotos').value=d.fotos;actualizarListaFotos('vp-fotos-lista',d.fotos);}var fc1Val=d.fotosComp&&d.fotosComp[0]?d.fotosComp[0].numero:'',fc2Val=d.fotosComp&&d.fotosComp[1]?d.fotosComp[1].numero:'';if(fc1Val){document.getElementById('vp-fc1').value=fc1Val;actualizarListaFotos('vp-fc1-lista',fc1Val);}if(fc2Val){document.getElementById('vp-fc2').value=fc2Val;actualizarListaFotos('vp-fc2-lista',fc2Val);}document.getElementById('vp-obs').value=d.observaciones||'';inicializarContadoresDesdeEdicion('VP',d.fotos,fc1Val,fc2Val);showPage('vp');showToast('Editando VP','info');}else{document.getElementById('ev-fecha').value=r.fecha;document.getElementById('ev-zona').value=r.zona;document.getElementById('ev-unidad').value=r.unidad;setTransecto(parseInt(r.transecto.replace('T',''))||1);var d=r.datos;if(d.plantas)for(var i=0;i<d.plantas.length&&i<10;i++){document.getElementById('ev-planta'+(i+1)).value=d.plantas[i].nombre||'';for(var n=0;n<d.plantas[i].notas.length&&n<10;n++)document.getElementById('ev-planta'+(i+1)+'-n'+(n+1)).value=d.plantas[i].notas[n]||'';}if(d.palatables)for(var i=0;i<d.palatables.length&&i<3;i++){document.getElementById('ev-palatable'+(i+1)).value=d.palatables[i].nombre||'';for(var n=0;n<d.palatables[i].notas.length&&n<15;n++)document.getElementById('ev-palatable'+(i+1)+'-n'+(n+1)).value=d.palatables[i].notas[n]||'';}if(d.pastoreo){document.getElementById('ev-past1').value=d.pastoreo[0]||'';document.getElementById('ev-past2').value=d.pastoreo[1]||'';document.getElementById('ev-past3').value=d.pastoreo[2]||'';}if(d.herbaceas)for(var i=0;i<7;i++)document.getElementById('ev-herb'+(i+1)).value=d.herbaceas[i]||'';if(d.matorral){document.getElementById('ev-mat1cob').value=d.matorral.punto1?d.matorral.punto1.cobertura:'';document.getElementById('ev-mat1alt').value=d.matorral.punto1?d.matorral.punto1.altura:'';document.getElementById('ev-mat1esp').value=d.matorral.punto1?d.matorral.punto1.especie:'';document.getElementById('ev-mat2cob').value=d.matorral.punto2?d.matorral.punto2.cobertura:'';document.getElementById('ev-mat2alt').value=d.matorral.punto2?d.matorral.punto2.altura:'';document.getElementById('ev-mat2esp').value=d.matorral.punto2?d.matorral.punto2.especie:'';}if(d.fotos){document.getElementById('ev-fotos').value=d.fotos;actualizarListaFotos('ev-fotos-lista',d.fotos);}var fc1Val=d.fotosComp&&d.fotosComp[0]?d.fotosComp[0].numero:'',fc2Val=d.fotosComp&&d.fotosComp[1]?d.fotosComp[1].numero:'';if(fc1Val){document.getElementById('ev-fc1').value=fc1Val;actualizarListaFotos('ev-fc1-lista',fc1Val);}if(fc2Val){document.getElementById('ev-fc2').value=fc2Val;actualizarListaFotos('ev-fc2-lista',fc2Val);}document.getElementById('ev-obs').value=d.observaciones||'';inicializarContadoresDesdeEdicion('EV',d.fotos,fc1Val,fc2Val);actualizarEstadisticasPlantas();actualizarEstadisticasPalatables();actualizarMediaHerbaceas();actualizarResumenMatorral();showPage('ev');showToast('Editando EV','info');}}
+function loadPanel(){var rs=getRegistros(),h='';if(rs.length===0)h='<p style="text-align:center;color:#888;padding:20px">No hay registros</p>';else rs.slice().reverse().forEach(function(r){var opInfo=r.operador_nombre?' | '+r.operador_nombre:'';var tipoCls=r.tipo==='VP'?'vp':r.tipo==='EL'?'el':'ei';h+='<div class="record-item"><span class="tipo '+tipoCls+'">'+r.tipo+'</span> <strong>'+r.zona+'>'+r.unidad+'</strong>'+(r.transecto?' ('+r.transecto+')':'')+'<div class="info">'+r.fecha+' | '+(r.enviado?'✅ Enviado':'⏳ Pendiente')+opInfo+'</div><div class="actions"><button class="btn-small edit" onclick="editarRegistro('+r.id+')">✏️</button><button class="btn-small pdf" onclick="exportarPDF('+r.id+')">📄</button><button class="btn-small delete" onclick="eliminarRegistro('+r.id+')">🗑️</button></div></div>';});document.getElementById('panelList').innerHTML=h;}
+function editarRegistro(id){var rs=getRegistros(),r=rs.find(function(x){return x.id===id;});if(!r)return;editandoId=id;if(r.tipo==='VP'||r.tipo==='EL'){var pre=(r.tipo==='VP')?'vp':'el';document.getElementById(pre+'-fecha').value=r.fecha;document.getElementById(pre+'-zona').value=r.zona;document.getElementById(pre+'-unidad').value=r.unidad;var d=r.datos;if(d.pastoreo){document.getElementById(pre+'-past1').value=d.pastoreo[0]||'';document.getElementById(pre+'-past2').value=d.pastoreo[1]||'';document.getElementById(pre+'-past3').value=d.pastoreo[2]||'';}if(d.observacionPastoreo){document.getElementById(pre+'-senal').value=d.observacionPastoreo.senal||'';document.getElementById(pre+'-veredas').value=d.observacionPastoreo.veredas||'';document.getElementById(pre+'-cagarrutas').value=d.observacionPastoreo.cagarrutas||'';}if(d.fotos){document.getElementById(pre+'-fotos').value=d.fotos;actualizarListaFotos(pre+'-fotos-lista',d.fotos);}var fc1Val=d.fotosComp&&d.fotosComp[0]?d.fotosComp[0].numero:'',fc2Val=d.fotosComp&&d.fotosComp[1]?d.fotosComp[1].numero:'';if(fc1Val){document.getElementById(pre+'-fc1').value=fc1Val;actualizarListaFotos(pre+'-fc1-lista',fc1Val);}if(fc2Val){document.getElementById(pre+'-fc2').value=fc2Val;actualizarListaFotos(pre+'-fc2-lista',fc2Val);}document.getElementById(pre+'-obs').value=d.observaciones||'';inicializarContadoresDesdeEdicion(r.tipo,d.fotos,fc1Val,fc2Val);showPage(r.tipo==='VP'?'vp':'el');showToast('Editando '+r.tipo,'info');}else{document.getElementById('ev-fecha').value=r.fecha;document.getElementById('ev-zona').value=r.zona;document.getElementById('ev-unidad').value=r.unidad;setTransecto(parseInt((r.transecto||'T1').replace('T',''))||1);var d=r.datos;if(d.plantas)for(var i=0;i<d.plantas.length&&i<10;i++){document.getElementById('ev-planta'+(i+1)).value=d.plantas[i].nombre||'';for(var n=0;n<d.plantas[i].notas.length&&n<10;n++)document.getElementById('ev-planta'+(i+1)+'-n'+(n+1)).value=d.plantas[i].notas[n]||'';}if(d.palatables)for(var i=0;i<d.palatables.length&&i<3;i++){document.getElementById('ev-palatable'+(i+1)).value=d.palatables[i].nombre||'';for(var n=0;n<d.palatables[i].notas.length&&n<15;n++)document.getElementById('ev-palatable'+(i+1)+'-n'+(n+1)).value=d.palatables[i].notas[n]||'';}if(d.pastoreo){document.getElementById('ev-past1').value=d.pastoreo[0]||'';document.getElementById('ev-past2').value=d.pastoreo[1]||'';document.getElementById('ev-past3').value=d.pastoreo[2]||'';}if(d.herbaceas)for(var i=0;i<7;i++)document.getElementById('ev-herb'+(i+1)).value=d.herbaceas[i]||'';if(d.matorral){document.getElementById('ev-mat1cob').value=d.matorral.punto1?d.matorral.punto1.cobertura:'';document.getElementById('ev-mat1alt').value=d.matorral.punto1?d.matorral.punto1.altura:'';document.getElementById('ev-mat1esp').value=d.matorral.punto1?d.matorral.punto1.especie:'';document.getElementById('ev-mat2cob').value=d.matorral.punto2?d.matorral.punto2.cobertura:'';document.getElementById('ev-mat2alt').value=d.matorral.punto2?d.matorral.punto2.altura:'';document.getElementById('ev-mat2esp').value=d.matorral.punto2?d.matorral.punto2.especie:'';}if(d.fotos){document.getElementById('ev-fotos').value=d.fotos;actualizarListaFotos('ev-fotos-lista',d.fotos);}var fc1Val=d.fotosComp&&d.fotosComp[0]?d.fotosComp[0].numero:'',fc2Val=d.fotosComp&&d.fotosComp[1]?d.fotosComp[1].numero:'';if(fc1Val){document.getElementById('ev-fc1').value=fc1Val;actualizarListaFotos('ev-fc1-lista',fc1Val);}if(fc2Val){document.getElementById('ev-fc2').value=fc2Val;actualizarListaFotos('ev-fc2-lista',fc2Val);}document.getElementById('ev-obs').value=d.observaciones||'';inicializarContadoresDesdeEdicion('EI',d.fotos,fc1Val,fc2Val);actualizarEstadisticasPlantas();actualizarEstadisticasPalatables();actualizarMediaHerbaceas();actualizarResumenMatorral();showPage('ev');showToast('Editando EI','info');}}
 function eliminarRegistro(id){if(confirm('¿Eliminar?')){localStorage.setItem('rapca_registros',JSON.stringify(getRegistros().filter(function(r){return r.id!==id;})));updatePendingCount();loadPanel();showToast('Eliminado','info');}}
 function borrarTodo(){if(confirm('¿Borrar TODO?')){localStorage.removeItem('rapca_registros');updatePendingCount();loadPanel();showToast('Borrados','info');}}
 
@@ -1139,20 +1205,21 @@ function cargarListaInfra(){
   var statsMap={};
   allRegs.forEach(function(reg){
     if(!reg.unidad)return;
-    if(!statsMap[reg.unidad])statsMap[reg.unidad]={vp:0,ev:0,fotos:0};
-    if(reg.tipo==='VP')statsMap[reg.unidad].vp++;else statsMap[reg.unidad].ev++;
+    if(!statsMap[reg.unidad])statsMap[reg.unidad]={vp:0,el:0,ei:0,fotos:0};
+    if(reg.tipo==='VP')statsMap[reg.unidad].vp++;else if(reg.tipo==='EL')statsMap[reg.unidad].el++;else statsMap[reg.unidad].ei++;
     var dd=reg.datos||{};
     if(dd.fotos)statsMap[reg.unidad].fotos+=dd.fotos.split(',').filter(function(x){return x.trim();}).length;
     if(dd.fotosComp)dd.fotosComp.forEach(function(fc){if(fc.numero)statsMap[reg.unidad].fotos+=fc.numero.split(',').filter(function(x){return x.trim();}).length;});
   });
   filtrados.slice(0,50).forEach(function(r){
-    var st=statsMap[r.idUnidad]||{vp:0,ev:0,fotos:0};
+    var st=statsMap[r.idUnidad]||{vp:0,el:0,ei:0,fotos:0};
     h+='<div class="record-card infra"><div class="rc-title">'+(r.idUnidad||'--')+' — '+(r.nombre||'Sin nombre')+'</div>';
     h+='<div class="rc-info">'+(r.municipio||'-')+' | '+(r.provincia||'-')+' | Zona: '+(r.idZona||'-')+'</div>';
-    if(st.vp>0||st.ev>0||st.fotos>0){
+    if(st.vp>0||st.el>0||st.ei>0||st.fotos>0){
       h+='<div class="state-badges">';
       if(st.vp>0)h+='<span class="state-badge vp-badge">VP:'+st.vp+'</span>';
-      if(st.ev>0)h+='<span class="state-badge ev-badge">EV:'+st.ev+'</span>';
+      if(st.el>0)h+='<span class="state-badge el-badge">EL:'+st.el+'</span>';
+      if(st.ei>0)h+='<span class="state-badge ev-badge">EI:'+st.ei+'</span>';
       if(st.fotos>0)h+='<span class="state-badge foto-badge">📷'+st.fotos+'</span>';
       h+='</div>';
     }
