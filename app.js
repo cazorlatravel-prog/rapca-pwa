@@ -33,6 +33,15 @@ var INFRA_CAMPOS_BASE=[
 var fotosDB=null;
 var fotosCacheMemoria={}; // Cache en memoria como respaldo
 
+// --- Forzar actualización (borrar SW + caches) ---
+function forzarActualizacion(){
+  if(!confirm('Se borrará la caché y se recargará la app. ¿Continuar?'))return;
+  Promise.resolve()
+  .then(function(){if('caches' in window)return caches.keys().then(function(k){return Promise.all(k.map(function(c){return caches.delete(c);}));});})
+  .then(function(){if(navigator.serviceWorker)return navigator.serviceWorker.getRegistrations().then(function(regs){regs.forEach(function(r){r.unregister();});});})
+  .then(function(){location.reload(true);});
+}
+
 // --- Auth local (funciona sin backend PHP) ---
 function getUsuariosLocal(){var d=localStorage.getItem('rapca_usuarios_local');return d?JSON.parse(d):[];}
 function guardarUsuariosLocal(lista){localStorage.setItem('rapca_usuarios_local',JSON.stringify(lista));}
