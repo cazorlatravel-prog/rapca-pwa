@@ -1173,7 +1173,7 @@ if(window.DeviceOrientationEvent){
   window.addEventListener('deviceorientation',function(e){if(e.webkitCompassHeading)currentHeading=Math.round(e.webkitCompassHeading);else if(e.alpha)currentHeading=Math.round(360-e.alpha);},true);
 }
 
-function iniciarGeolocalizacion(){if(navigator.geolocation)navigator.geolocation.watchPosition(function(p){currentLat=p.coords.latitude;currentLon=p.coords.longitude;currentAlt=p.coords.altitude;currentSpeed=p.coords.speed;currentAcc=p.coords.accuracy;currentUTM=latLonToUTM(currentLat,currentLon);precargarMapTiles();actualizarPanelGPS();if(trackGrabando&&!trackPausado)agregarPuntoTrack(p);},function(){},{enableHighAccuracy:true,maximumAge:3000,timeout:10000});}
+function iniciarGeolocalizacion(){if(navigator.geolocation)navigator.geolocation.watchPosition(function(p){currentLat=p.coords.latitude;currentLon=p.coords.longitude;currentAlt=p.coords.altitude;currentSpeed=p.coords.speed;currentAcc=p.coords.accuracy;currentUTM=latLonToUTM(currentLat,currentLon);precargarMapTiles();actualizarPanelGPS();},function(){},{enableHighAccuracy:true,maximumAge:3000,timeout:10000});}
 function latLonToUTM(lat,lon){var K0=0.9996,E=0.00669438,R=6378137,latRad=lat*Math.PI/180,lonRad=lon*Math.PI/180,zoneNum=Math.floor((lon+180)/6)+1;if(lat>=56&&lat<64&&lon>=3&&lon<12)zoneNum=32;var lonOrigin=(zoneNum-1)*6-180+3,N=R/Math.sqrt(1-E*Math.pow(Math.sin(latRad),2)),T=Math.pow(Math.tan(latRad),2),C=(E/(1-E))*Math.pow(Math.cos(latRad),2),A=Math.cos(latRad)*(lonRad-lonOrigin*Math.PI/180),M=R*((1-E/4-3*E*E/64)*latRad-(3*E/8+3*E*E/32)*Math.sin(2*latRad)+(15*E*E/256)*Math.sin(4*latRad)),easting=K0*N*(A+(1-T+C)*Math.pow(A,3)/6+(5-18*T+T*T)*Math.pow(A,5)/120)+500000,northing=K0*(M+N*Math.tan(latRad)*(A*A/2+(5-T+9*C+4*C*C)*Math.pow(A,4)/24));if(lat<0)northing+=10000000;var bands='CDEFGHJKLMNPQRSTUVWXX',bandIdx=Math.floor((lat+80)/8);return{zone:zoneNum,band:bands.charAt(Math.max(0,Math.min(20,bandIdx))),easting:Math.round(easting),northing:Math.round(northing)};}
 function lon2tile(lon,zoom){return Math.floor((lon+180)/360*Math.pow(2,zoom));}
 function lat2tile(lat,zoom){return Math.floor((1-Math.log(Math.tan(lat*Math.PI/180)+1/Math.cos(lat*Math.PI/180))/Math.PI)/2*Math.pow(2,zoom));}
@@ -2340,8 +2340,6 @@ function cargarCapasKMLdesdeDB(){
 // =========================================================================
 
 // --- Variables globales GPS tools ---
-var trackGrabando=false,trackPausado=false,trackPuntos=[],trackPolyline=null,trackStartTime=null,trackTotalDist=0,trackTimer=null;
-var tracksSavedList=[];
 var medicionActiva=false,medicionPuntos=[],medicionPolyline=null,medicionMarkers=[];
 var waypointsPendiente=null,waypointsGuardados=[];var waypointsLayer=null;
 var gpsInfoVisible=false,seguirGPS=false;
@@ -2353,7 +2351,7 @@ function toggleGPSInfo(){
   if(p)p.classList.toggle('show',gpsInfoVisible);
 }
 function actualizarPanelGPS(){
-  if(!gpsInfoVisible&&!trackGrabando)return;
+  if(!gpsInfoVisible)return;
   var setEl=function(id,v){var e=document.getElementById(id);if(e)e.textContent=v;};
   if(currentLat!==null){
     setEl('gps-lat',currentLat.toFixed(6));
@@ -2369,7 +2367,6 @@ function actualizarPanelGPS(){
     setEl('gps-f-speed',currentSpeed!==null?(currentSpeed*3.6).toFixed(1)+'km/h':'--');
     setEl('gps-f-alt',currentAlt!==null?Math.round(currentAlt)+'m':'--');
     if(currentUTM)setEl('gps-f-utm',currentUTM.zone+currentUTM.band+' '+currentUTM.easting);
-    if(trackGrabando)setEl('gps-f-dist',trackTotalDist.toFixed(2)+'km');
   }
   // Actualizar marcador posición en mapa
   if(mapaLeaflet&&currentLat&&currentLon){
@@ -2378,101 +2375,6 @@ function actualizarPanelGPS(){
   }
 }
 
-// --- Grabación de Tracks GPS ---
-function toggleTrackRec(){
-  if(trackGrabando){
-    // Ya grabando: pausar/reanudar
-    trackPausado=!trackPausado;
-    var btn=document.getElementById('btnTrackRec');
-    if(trackPausado){btn.textContent='▶ Reanudar';btn.classList.remove('recording');}
-    else{btn.textContent='⏺ Grabando';btn.classList.add('recording');}
-    return;
-  }
-  // Iniciar grabación
-  if(!currentLat||!currentLon){showToast('Esperando señal GPS...','error');return;}
-  trackGrabando=true;trackPausado=false;trackPuntos=[];trackTotalDist=0;
-  trackStartTime=Date.now();
-  var btn=document.getElementById('btnTrackRec');
-  btn.textContent='⏺ Grabando';btn.classList.add('recording');
-  document.getElementById('btnTrackPause').style.display='';
-  document.getElementById('btnTrackStop').style.display='';
-  document.getElementById('track-stats-bar').classList.add('show');
-  // Crear polyline en mapa
-  if(mapaLeaflet){
-    trackPolyline=L.polyline([],{color:'#e74c3c',weight:4,opacity:0.8,dashArray:null}).addTo(mapaLeaflet);
-  }
-  // Añadir primer punto
-  agregarPuntoTrack({coords:{latitude:currentLat,longitude:currentLon,altitude:currentAlt,speed:currentSpeed,accuracy:currentAcc}});
-  // Timer para actualizar stats
-  trackTimer=setInterval(actualizarStatsTrack,1000);
-  seguirGPS=true;
-  showToast('Grabación iniciada','success');
-}
-function pausarTrack(){
-  trackPausado=!trackPausado;
-  var btn=document.getElementById('btnTrackRec');
-  if(trackPausado){btn.textContent='▶ Reanudar';btn.classList.remove('recording');}
-  else{btn.textContent='⏺ Grabando';btn.classList.add('recording');}
-}
-function pararTrack(){
-  if(!trackGrabando)return;
-  trackGrabando=false;trackPausado=false;
-  if(trackTimer){clearInterval(trackTimer);trackTimer=null;}
-  var btn=document.getElementById('btnTrackRec');
-  btn.textContent='⏺ Grabar';btn.classList.remove('recording');
-  document.getElementById('btnTrackPause').style.display='none';
-  document.getElementById('btnTrackStop').style.display='none';
-  seguirGPS=false;
-  if(trackPuntos.length<2){
-    showToast('Track muy corto, no guardado','info');
-    if(trackPolyline&&mapaLeaflet)mapaLeaflet.removeLayer(trackPolyline);
-    document.getElementById('track-stats-bar').classList.remove('show');
-    return;
-  }
-  // Guardar track
-  var nombre=prompt('Nombre del track:','Track '+new Date().toLocaleDateString('es-ES'));
-  if(!nombre)nombre='Track '+Date.now();
-  var track={id:Date.now(),nombre:nombre,puntos:trackPuntos,distancia:trackTotalDist,duracion:Date.now()-trackStartTime,fecha:new Date().toISOString().split('T')[0],operador:sesionActual?sesionActual.nombre:''};
-  var tracks=getTracksGuardados();
-  tracks.push(track);
-  localStorage.setItem('rapca_tracks',JSON.stringify(tracks));
-  // Cambiar color del polyline a guardado
-  if(trackPolyline)trackPolyline.setStyle({color:'#2ecc71',dashArray:'8,4'});
-  document.getElementById('track-stats-bar').classList.remove('show');
-  showToast('Track guardado: '+nombre,'success');
-}
-function agregarPuntoTrack(pos){
-  var pt={lat:pos.coords.latitude,lon:pos.coords.longitude,alt:pos.coords.altitude,speed:pos.coords.speed,acc:pos.coords.accuracy,time:Date.now()};
-  // Filtrar puntos con poca precisión
-  if(pt.acc&&pt.acc>50)return;
-  // Calcular distancia al punto anterior
-  if(trackPuntos.length>0){
-    var prev=trackPuntos[trackPuntos.length-1];
-    var d=distanciaHaversine(prev.lat,prev.lon,pt.lat,pt.lon);
-    // Filtrar movimiento menor a 2m (ruido GPS)
-    if(d<0.002)return;
-    trackTotalDist+=d;
-  }
-  trackPuntos.push(pt);
-  // Actualizar polyline
-  if(trackPolyline)trackPolyline.addLatLng([pt.lat,pt.lon]);
-  actualizarStatsTrack();
-}
-function actualizarStatsTrack(){
-  if(!trackGrabando)return;
-  var elapsed=Date.now()-trackStartTime;
-  var min=Math.floor(elapsed/60000),sec=Math.floor((elapsed%60000)/1000);
-  var setEl=function(id,v){var e=document.getElementById(id);if(e)e.textContent=v;};
-  setEl('track-dist',trackTotalDist.toFixed(2));
-  setEl('track-time',(min<10?'0':'')+min+':'+(sec<10?'0':'')+sec);
-  setEl('track-pts',trackPuntos.length);
-  var avgSpeed=elapsed>0?(trackTotalDist/(elapsed/3600000)).toFixed(1):'0.0';
-  setEl('track-speed',avgSpeed);
-  if(trackPuntos.length>0){
-    var lastAlt=trackPuntos[trackPuntos.length-1].alt;
-    setEl('track-elev',lastAlt!==null?Math.round(lastAlt):'--');
-  }
-}
 
 // --- Fórmula Haversine para distancia entre 2 puntos ---
 function distanciaHaversine(lat1,lon1,lat2,lon2){
@@ -2481,48 +2383,6 @@ function distanciaHaversine(lat1,lon1,lat2,lon2){
   return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 
-// --- Tracks guardados ---
-function getTracksGuardados(){var d=localStorage.getItem('rapca_tracks');return d?JSON.parse(d):[];}
-function toggleTracksPanel(){
-  var panel=document.getElementById('tracks-panel');
-  panel.classList.toggle('show');
-  if(panel.classList.contains('show'))renderTracksList();
-}
-function renderTracksList(){
-  var tracks=getTracksGuardados();
-  var el=document.getElementById('tracks-list');
-  if(!el)return;
-  if(tracks.length===0){el.innerHTML='<p style="text-align:center;color:#888;font-size:.8rem">Sin tracks guardados</p>';return;}
-  var h='';
-  tracks.slice().reverse().forEach(function(t){
-    var durMin=Math.round((t.duracion||0)/60000);
-    h+='<div class="track-item"><div class="ti-info"><div class="ti-name">'+t.nombre+'</div>';
-    h+='<div class="ti-meta">'+t.fecha+' | '+t.distancia.toFixed(2)+' km | '+durMin+' min | '+t.puntos.length+' pts'+(t.operador?' | '+t.operador:'')+'</div></div>';
-    h+='<div class="ti-actions">';
-    h+='<button style="background:#3498db" onclick="verTrackEnMapa('+t.id+')">👁</button>';
-    h+='<button style="background:#27ae60" onclick="exportarTrackGPX('+t.id+')">GPX</button>';
-    h+='<button style="background:#e74c3c" onclick="eliminarTrack('+t.id+')">🗑</button>';
-    h+='</div></div>';
-  });
-  el.innerHTML=h;
-}
-function verTrackEnMapa(id){
-  var tracks=getTracksGuardados();
-  var t=tracks.find(function(x){return x.id===id;});
-  if(!t||t.puntos.length<2)return;
-  if(!mapaLeaflet)initMapa();
-  var latlngs=t.puntos.map(function(p){return[p.lat,p.lon];});
-  var line=L.polyline(latlngs,{color:'#e74c3c',weight:3,opacity:0.8}).addTo(mapaLeaflet);
-  line.bindPopup('<b>'+t.nombre+'</b><br>'+t.distancia.toFixed(2)+' km | '+t.fecha);
-  mapaLeaflet.fitBounds(line.getBounds(),{padding:[30,30]});
-  showToast('Track: '+t.nombre,'success');
-}
-function eliminarTrack(id){
-  if(!confirm('¿Eliminar track?'))return;
-  var tracks=getTracksGuardados().filter(function(t){return t.id!==id;});
-  localStorage.setItem('rapca_tracks',JSON.stringify(tracks));
-  renderTracksList();showToast('Track eliminado','info');
-}
 
 // --- Herramienta de medición de distancia ---
 function toggleMedicion(){
@@ -2644,16 +2504,13 @@ function eliminarWaypoint(id){
   if(mapaLeaflet)actualizarMarcadoresMapa();
 }
 
-// --- Exportar GPX ---
-function exportarTrackGPX(id){
-  var tracks=getTracksGuardados();
-  var t=id?tracks.find(function(x){return x.id===id;}):null;
+// --- Exportar GPX (waypoints) ---
+function exportarGPX(){
   var wps=getWaypoints();
-  if(!t&&wps.length===0&&tracks.length===0){showToast('Sin datos para exportar','error');return;}
+  if(wps.length===0){showToast('Sin waypoints para exportar','error');return;}
   var gpx='<?xml version="1.0" encoding="UTF-8"?>\n';
   gpx+='<gpx version="1.1" creator="RAPCA Campo" xmlns="http://www.topografix.com/GPX/1/1">\n';
   gpx+='<metadata><name>RAPCA Export</name><time>'+new Date().toISOString()+'</time></metadata>\n';
-  // Waypoints
   wps.forEach(function(wp){
     gpx+='<wpt lat="'+wp.lat+'" lon="'+wp.lon+'">';
     if(wp.alt!==null)gpx+='<ele>'+wp.alt+'</ele>';
@@ -2662,25 +2519,11 @@ function exportarTrackGPX(id){
     if(wp.notas)gpx+='<desc>'+escapeXML(wp.notas)+'</desc>';
     gpx+='</wpt>\n';
   });
-  // Tracks
-  var tracksToExport=t?[t]:tracks;
-  tracksToExport.forEach(function(track){
-    gpx+='<trk><name>'+escapeXML(track.nombre)+'</name><trkseg>\n';
-    track.puntos.forEach(function(p){
-      gpx+='<trkpt lat="'+p.lat+'" lon="'+p.lon+'">';
-      if(p.alt!==null)gpx+='<ele>'+p.alt+'</ele>';
-      gpx+='<time>'+new Date(p.time).toISOString()+'</time>';
-      if(p.speed!==null)gpx+='<speed>'+p.speed+'</speed>';
-      gpx+='</trkpt>\n';
-    });
-    gpx+='</trkseg></trk>\n';
-  });
   gpx+='</gpx>';
-  // Descargar
   var blob=new Blob([gpx],{type:'application/gpx+xml'});
   var url=URL.createObjectURL(blob);
   var a=document.createElement('a');
-  a.href=url;a.download='rapca_'+(t?t.nombre.replace(/\s/g,'_'):'export')+'_'+new Date().toISOString().split('T')[0]+'.gpx';
+  a.href=url;a.download='rapca_waypoints_'+new Date().toISOString().split('T')[0]+'.gpx';
   document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
   showToast('GPX exportado','success');
 }
@@ -2707,112 +2550,12 @@ function importarGPX(file){
         wps.push(wp);agregarWaypointAlMapa(wp);importados++;
       }
       localStorage.setItem('rapca_waypoints',JSON.stringify(wps));
-      // Importar tracks
-      var trkEls=doc.querySelectorAll('trk');
-      var tracks=getTracksGuardados();
-      for(var i=0;i<trkEls.length;i++){
-        var trk=trkEls[i];
-        var nameEl=trk.querySelector('name');
-        var puntos=[];var dist=0;
-        var trkpts=trk.querySelectorAll('trkpt');
-        for(var j=0;j<trkpts.length;j++){
-          var tp=trkpts[j];
-          var lat=parseFloat(tp.getAttribute('lat')),lon=parseFloat(tp.getAttribute('lon'));
-          var eleEl=tp.querySelector('ele'),timeEl=tp.querySelector('time'),spdEl=tp.querySelector('speed');
-          var pt={lat:lat,lon:lon,alt:eleEl?parseFloat(eleEl.textContent):null,speed:spdEl?parseFloat(spdEl.textContent):null,time:timeEl?new Date(timeEl.textContent).getTime():Date.now()};
-          if(puntos.length>0){dist+=distanciaHaversine(puntos[puntos.length-1].lat,puntos[puntos.length-1].lon,pt.lat,pt.lon);}
-          puntos.push(pt);
-        }
-        if(puntos.length>1){
-          var track={id:Date.now()+100+i,nombre:nameEl?nameEl.textContent:'Track importado',puntos:puntos,distancia:dist,duracion:puntos.length>1?puntos[puntos.length-1].time-puntos[0].time:0,fecha:new Date().toISOString().split('T')[0],operador:sesionActual?sesionActual.nombre:''};
-          tracks.push(track);importados++;
-          // Dibujar en mapa
-          var latlngs=puntos.map(function(p){return[p.lat,p.lon];});
-          var line=L.polyline(latlngs,{color:'#e74c3c',weight:3,opacity:0.8}).addTo(mapaLeaflet);
-          line.bindPopup('<b>'+track.nombre+'</b><br>'+track.distancia.toFixed(2)+' km');
-          mapaLeaflet.fitBounds(line.getBounds(),{padding:[30,30]});
-        }
-      }
-      localStorage.setItem('rapca_tracks',JSON.stringify(tracks));
-      showToast(importados+' elementos importados de GPX','success');
+      showToast(importados+' waypoints importados de GPX','success');
     }catch(err){showToast('Error GPX: '+err.message,'error');console.error(err);}
   };
   reader.readAsText(file);
 }
 
-// --- Cache de tiles offline ---
-function toggleOfflinePanel(){
-  var panel=document.getElementById('offline-panel');
-  panel.classList.toggle('show');
-  if(panel.classList.contains('show'))actualizarEstadoOffline();
-}
-function actualizarEstadoOffline(){
-  if(!('caches' in window)){document.getElementById('offline-status').textContent='Cache API no disponible';return;}
-  caches.open('rapca-tiles').then(function(cache){
-    return cache.keys();
-  }).then(function(keys){
-    document.getElementById('offline-status').textContent='Tiles en caché: '+keys.length;
-  });
-}
-function descargarTilesOffline(){
-  if(!mapaLeaflet){showToast('Abre el mapa primero','error');return;}
-  if(!('caches' in window)){showToast('Cache API no disponible','error');return;}
-  var bounds=mapaLeaflet.getBounds();
-  var currentZoom=mapaLeaflet.getZoom();
-  var range=parseInt(document.getElementById('offline-zoom-range').value)||4;
-  var minZoom=Math.max(1,currentZoom-range);
-  var maxZoom=Math.min(18,currentZoom+range);
-  // Calcular tiles a descargar
-  var tiles=[];
-  for(var z=minZoom;z<=maxZoom;z++){
-    var minX=lon2tile(bounds.getWest(),z);
-    var maxX=lon2tile(bounds.getEast(),z);
-    var minY=lat2tile(bounds.getNorth(),z);
-    var maxY=lat2tile(bounds.getSouth(),z);
-    for(var x=minX;x<=maxX;x++){
-      for(var y=minY;y<=maxY;y++){
-        tiles.push({z:z,x:x,y:y});
-      }
-    }
-  }
-  if(tiles.length>5000){showToast('Demasiadas tiles ('+tiles.length+'). Reduce el zoom o el rango.','error');return;}
-  if(tiles.length>500&&!confirm('Se descargarán '+tiles.length+' tiles. ¿Continuar?'))return;
-  var status=document.getElementById('offline-status');
-  var bar=document.getElementById('offline-progress-bar');
-  status.textContent='Descargando '+tiles.length+' tiles...';bar.style.width='0%';
-  var downloaded=0,errors=0;
-  caches.open('rapca-tiles').then(function(cache){
-    var batch=[];
-    tiles.forEach(function(t,idx){
-      var url='https://a.tile.openstreetmap.org/'+t.z+'/'+t.x+'/'+t.y+'.png';
-      var p=fetch(url,{mode:'cors'}).then(function(res){
-        if(res.ok)return cache.put(url,res);
-      }).then(function(){
-        downloaded++;
-      }).catch(function(){errors++;});
-      batch.push(p);
-      // Actualizar progreso cada 20 tiles
-      if(idx%20===0||idx===tiles.length-1){
-        batch.push(new Promise(function(resolve){
-          setTimeout(function(){
-            var pct=Math.round((downloaded+errors)/tiles.length*100);
-            bar.style.width=pct+'%';
-            status.textContent='Descargando... '+downloaded+'/'+tiles.length+(errors?' ('+errors+' errores)':'');
-            resolve();
-          },0);
-        }));
-      }
-    });
-    return Promise.all(batch);
-  }).then(function(){
-    bar.style.width='100%';
-    status.textContent='Completado: '+downloaded+' tiles descargadas'+(errors?' ('+errors+' errores)':'');
-    showToast(downloaded+' tiles offline guardadas','success');
-  }).catch(function(e){
-    status.textContent='Error: '+e.message;
-    showToast('Error descargando tiles','error');
-  });
-}
 
 // --- Cargar waypoints al inicializar mapa ---
 var _origInitMapa=initMapa;
