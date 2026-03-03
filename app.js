@@ -10,7 +10,7 @@ var cameraStream=null,camaraTipo='',camaraSubtipo='',currentHeading=0;
 var contadorFotosVP={},contadorFotosEV={},contadorFotosEL={};
 var currentLat=null,currentLon=null,currentUTM=null;
 var deferredPrompt=null,mapTilesLoaded=[];
-var mapaLeaflet=null,controlCapas=null,capasKML={},capasKMLRaw={},capasKMLSubcapas={},capasKMLLabels={},marcadorPosicion=null,clusterGroup=null;
+var mapaLeaflet=null,controlCapas=null,capasKML={},capasKMLRaw={},capasKMLSubcapas={},capasKMLLabels={},capasKMLEstilo={},marcadorPosicion=null,clusterGroup=null;
 var syncEnProgreso=false,syncStats={total:0,ok:0,fail:0},fallosSubida=[];
 var anotaciones=[],modoAnotacion=false;
 var editandoGanaderoId=null,editandoInfraId=null;
@@ -542,7 +542,7 @@ function parsearKML(kmlText){
       if(coordsEl){
         var coords=parseKMLCoord(coordsEl.textContent);
         var latlngs=coords.map(function(c){return[c[1],c[0]];});
-        var opts={color:estilo.lineColor||'#3388ff',weight:estilo.lineWidth||3};
+        var opts={color:estilo.lineColor||'#3388ff',weight:estilo.lineWidth||4,opacity:0.85};
         var pl=L.polyline(latlngs,opts);
         if(popup)pl.bindPopup(popup);
         subLayer=pl;tipoGeo='linea';
@@ -554,7 +554,7 @@ function parsearKML(kmlText){
       if(outerCoords){
         var coords=parseKMLCoord(outerCoords.textContent);
         var latlngs=coords.map(function(c){return[c[1],c[0]];});
-        var opts={color:estilo.lineColor||'#3388ff',fillColor:estilo.fillColor||'#3388ff',fillOpacity:0.3};
+        var opts={color:estilo.lineColor||'#3388ff',weight:4,fillColor:estilo.fillColor||'#3388ff',fillOpacity:0.25,opacity:0.85};
         var pg=L.polygon(latlngs,opts);
         if(popup)pg.bindPopup(popup);
         subLayer=pg;tipoGeo='poligono';
@@ -618,6 +618,12 @@ function actualizarListaCapas(){
     // Tabla de subcapas
     html+='<div id="capa-tabla-'+capaId+'" style="display:'+(expandida?'block':'none')+'">';
     if(totalSub>0){
+      // Controles de estilo
+      var est=capasKMLEstilo[nombre]||{peso:4,opacidad:85};
+      html+='<div class="capa-estilo-controls">';
+      html+='<div class="capa-estilo-row"><label>Trazo <b id="capa-peso-val-'+capaId+'">'+est.peso+'px</b></label><input type="range" min="1" max="12" value="'+est.peso+'" oninput="cambiarEstiloCapa(\''+nombreEsc+'\',\'peso\',this.value);document.getElementById(\'capa-peso-val-'+capaId+'\').textContent=this.value+\'px\'"></div>';
+      html+='<div class="capa-estilo-row"><label>Opacidad <b id="capa-opa-val-'+capaId+'">'+est.opacidad+'%</b></label><input type="range" min="5" max="100" step="5" value="'+est.opacidad+'" oninput="cambiarEstiloCapa(\''+nombreEsc+'\',\'opacidad\',this.value);document.getElementById(\'capa-opa-val-'+capaId+'\').textContent=this.value+\'%\'"></div>';
+      html+='</div>';
       // Buscador
       html+='<input type="text" class="capa-tabla-buscar" placeholder="Buscar en '+totalSub+' elementos..." oninput="filtrarTablaCapas(\''+nombreEsc+'\',this.value)">';
       // Tabla
@@ -649,6 +655,22 @@ function actualizarListaCapas(){
 function toggleExpandCapa(nombre){
   capasExpandidas[nombre]=!capasExpandidas[nombre];
   actualizarListaCapas();
+}
+function cambiarEstiloCapa(nombre,prop,valor){
+  if(!capasKMLEstilo[nombre])capasKMLEstilo[nombre]={peso:4,opacidad:85};
+  var est=capasKMLEstilo[nombre];
+  var v=parseInt(valor);
+  if(prop==='peso')est.peso=v;
+  else if(prop==='opacidad')est.opacidad=v;
+  // Aplicar a todas las subcapas
+  var subcapas=capasKMLSubcapas[nombre]||[];
+  subcapas.forEach(function(sc){
+    if(sc.tipo==='linea'||sc.tipo==='poligono'){
+      var newStyle={weight:est.peso,opacity:est.opacidad/100};
+      if(sc.tipo==='poligono')newStyle.fillOpacity=Math.max(0.05,est.opacidad/100-0.15);
+      try{sc.layer.setStyle(newStyle);}catch(e){}
+    }
+  });
 }
 function filtrarTablaCapas(nombre,query){
   var capaId=nombre.replace(/[^a-zA-Z0-9]/g,'_');
@@ -742,7 +764,7 @@ function eliminarCapaMapa(nombre){
   if(capasKML[nombre]){
     mapaLeaflet.removeLayer(capasKML[nombre]);
     if(controlCapas)controlCapas.removeLayer(capasKML[nombre]);
-    delete capasKML[nombre];delete capasKMLRaw[nombre];delete capasKMLSubcapas[nombre];
+    delete capasKML[nombre];delete capasKMLRaw[nombre];delete capasKMLSubcapas[nombre];delete capasKMLEstilo[nombre];
     // Limpiar etiquetas
     if(capasKMLLabels[nombre]){capasKMLLabels[nombre].forEach(function(l){mapaLeaflet.removeLayer(l);});delete capasKMLLabels[nombre];}
     // Limpiar permisos
@@ -759,7 +781,7 @@ function limpiarCapasMapa(){
   Object.keys(capasKML).forEach(function(k){mapaLeaflet.removeLayer(capasKML[k]);if(controlCapas)controlCapas.removeLayer(capasKML[k]);});
   // Limpiar etiquetas
   Object.keys(capasKMLLabels).forEach(function(k){capasKMLLabels[k].forEach(function(l){mapaLeaflet.removeLayer(l);});});
-  capasKML={};capasKMLRaw={};capasKMLSubcapas={};capasKMLLabels={};
+  capasKML={};capasKMLRaw={};capasKMLSubcapas={};capasKMLLabels={};capasKMLEstilo={};
   guardarPermisosCapas({});
   actualizarListaCapas();guardarCapasKMLLocal();
   if(fotosDB){try{var tx=fotosDB.transaction(['capas_kml'],'readwrite');tx.objectStore('capas_kml').clear();}catch(e){}}
