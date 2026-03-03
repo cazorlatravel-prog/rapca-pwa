@@ -7,7 +7,7 @@ function initTimeline(){
 }
 
 function poblarFiltrosTimeline(){
-  var rs=getRegistros();
+  var rs=getRegistrosUsuario();
   var ops={},unids={};
   rs.forEach(function(r){
     if(r.operador_nombre)ops[r.operador_email||r.operador_nombre]=r.operador_nombre;
@@ -28,7 +28,7 @@ function poblarFiltrosTimeline(){
 }
 
 function actualizarTimeline(){
-  var rs=getRegistros();
+  var rs=getRegistrosUsuario();
   var operador=document.getElementById('tl-filtro-operador')?document.getElementById('tl-filtro-operador').value:'';
   var unidad=document.getElementById('tl-filtro-unidad')?document.getElementById('tl-filtro-unidad').value:'';
   var tipo=document.getElementById('tl-filtro-tipo')?document.getElementById('tl-filtro-tipo').value:'';
