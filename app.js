@@ -39,7 +39,7 @@ function guardarUsuariosLocal(lista){localStorage.setItem('rapca_usuarios_local'
 function initUsuariosLocal(){
   var users=getUsuariosLocal();
   if(users.length===0){
-    users.push({id:1,email:'admin@rapca.com',nombre:'Administrador',password:'admin123',rol:'admin',activo:1});
+    users.push({id:1,email:'rapcajaen@gmail.com',nombre:'Administrador',password:'Gallito9431%',rol:'admin',activo:1});
     guardarUsuariosLocal(users);
   }
 }
