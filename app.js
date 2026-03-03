@@ -531,9 +531,8 @@ function parsearKML(kmlText){
       var coordsEl=point.querySelector('coordinates');
       if(coordsEl){
         var c=parseKMLCoord(coordsEl.textContent);
-        var mkOpts={};
-        if(estilo.iconColor){mkOpts.icon=L.divIcon({className:'',html:'<div style="background:'+estilo.iconColor+';width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',iconSize:[12,12],iconAnchor:[6,6]});}
-        var mk=L.marker([c[0][1],c[0][0]],mkOpts);
+        var pColor=estilo.iconColor||'#2ecc71';
+        var mk=L.marker([c[0][1],c[0][0]],{icon:L.divIcon({className:'kml-punto-icon',html:'<div style="background:'+pColor+';width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>'+(nombre?'<div class="kml-punto-label">'+nombre+'</div>':''),iconSize:[0,0],iconAnchor:[6,6]})});
         if(popup)mk.bindPopup(popup);
         subLayer=mk;tipoGeo='punto';
       }
@@ -546,6 +545,7 @@ function parsearKML(kmlText){
         var opts={color:estilo.lineColor||'#3388ff',weight:estilo.lineWidth||4,opacity:0.85};
         var pl=L.polyline(latlngs,opts);
         if(popup)pl.bindPopup(popup);
+        if(nombre)pl.bindTooltip(nombre,{permanent:true,direction:'center',className:'kml-shape-tooltip'});
         subLayer=pl;tipoGeo='linea';
       }
     }
@@ -558,6 +558,7 @@ function parsearKML(kmlText){
         var opts={color:estilo.lineColor||'#3388ff',weight:4,fillColor:estilo.fillColor||'#3388ff',fillOpacity:0.25,opacity:0.85};
         var pg=L.polygon(latlngs,opts);
         if(popup)pg.bindPopup(popup);
+        if(nombre)pg.bindTooltip(nombre,{permanent:true,direction:'center',className:'kml-shape-tooltip'});
         subLayer=pg;tipoGeo='poligono';
       }
     }
@@ -615,16 +616,18 @@ function actualizarListaCapas(){
       }
     }
     html+='</div>';
+    // Controles de estilo siempre visibles
+    if(totalSub>0){
+      var est=capasKMLEstilo[nombre]||{peso:4,opacidad:85};
+      html+='<div class="capa-estilo-controls">';
+      html+='<div class="capa-estilo-row"><label>✏️ Grosor <b id="capa-peso-val-'+capaId+'">'+est.peso+'px</b></label><input type="range" min="1" max="12" value="'+est.peso+'" oninput="cambiarEstiloCapa(\''+nombreEsc+'\',\'peso\',this.value);document.getElementById(\'capa-peso-val-'+capaId+'\').textContent=this.value+\'px\'"></div>';
+      html+='<div class="capa-estilo-row"><label>👁️ Opacidad <b id="capa-opa-val-'+capaId+'">'+est.opacidad+'%</b></label><input type="range" min="5" max="100" step="5" value="'+est.opacidad+'" oninput="cambiarEstiloCapa(\''+nombreEsc+'\',\'opacidad\',this.value);document.getElementById(\'capa-opa-val-'+capaId+'\').textContent=this.value+\'%\'"></div>';
+      html+='</div>';
+    }
 
     // Tabla de subcapas
     html+='<div id="capa-tabla-'+capaId+'" style="display:'+(expandida?'block':'none')+'">';
     if(totalSub>0){
-      // Controles de estilo
-      var est=capasKMLEstilo[nombre]||{peso:4,opacidad:85};
-      html+='<div class="capa-estilo-controls">';
-      html+='<div class="capa-estilo-row"><label>Trazo <b id="capa-peso-val-'+capaId+'">'+est.peso+'px</b></label><input type="range" min="1" max="12" value="'+est.peso+'" oninput="cambiarEstiloCapa(\''+nombreEsc+'\',\'peso\',this.value);document.getElementById(\'capa-peso-val-'+capaId+'\').textContent=this.value+\'px\'"></div>';
-      html+='<div class="capa-estilo-row"><label>Opacidad <b id="capa-opa-val-'+capaId+'">'+est.opacidad+'%</b></label><input type="range" min="5" max="100" step="5" value="'+est.opacidad+'" oninput="cambiarEstiloCapa(\''+nombreEsc+'\',\'opacidad\',this.value);document.getElementById(\'capa-opa-val-'+capaId+'\').textContent=this.value+\'%\'"></div>';
-      html+='</div>';
       // Buscador
       html+='<input type="text" class="capa-tabla-buscar" placeholder="Buscar en '+totalSub+' elementos..." oninput="filtrarTablaCapas(\''+nombreEsc+'\',this.value)">';
       // Tabla
