@@ -358,6 +358,66 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .btn-el{background:#2ecc71!important;color:#fff}
 .btn-camera.el{background:#2ecc71;color:#fff}
 .tipo.el{background:#d5f5e3;color:#196f3d}
+/* === GPS Tools (OruxMaps-style) === */
+.gps-tools-bar{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;padding:8px;background:#e8f6f3;border:2px solid #1abc9c;border-radius:10px}
+.gps-tools-bar button{border:none;padding:8px 12px;border-radius:8px;font-size:.8rem;cursor:pointer;font-weight:bold;min-height:38px;display:flex;align-items:center;gap:4px}
+.btn-track-rec{background:#e74c3c;color:#fff}
+.btn-track-rec.recording{background:#c0392b;animation:pulse-rec 1.2s infinite}
+.btn-track-pause{background:#f39c12;color:#fff}
+.btn-track-stop{background:#95a5a6;color:#fff}
+.btn-measure{background:#3498db;color:#fff}
+.btn-measure.active{background:#2471a3;box-shadow:inset 0 2px 4px rgba(0,0,0,.3)}
+.btn-waypoint{background:#8e44ad;color:#fff}
+.btn-gpx{background:#27ae60;color:#fff}
+.btn-offline{background:#1a3d2e;color:#fff}
+@keyframes pulse-rec{0%,100%{opacity:1}50%{opacity:.6}}
+/* GPS Info Panel */
+.gps-info-panel{display:none;margin-top:8px;padding:10px 12px;background:#1a3d2e;color:#fff;border-radius:10px;font-family:'Courier New',monospace}
+.gps-info-panel.show{display:block}
+.gps-info-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.gps-info-item{text-align:center}
+.gps-info-label{font-size:.6rem;color:#88d8b0;text-transform:uppercase;letter-spacing:1px}
+.gps-info-value{font-size:1.1rem;font-weight:bold;color:#fff}
+.gps-info-unit{font-size:.65rem;color:#aaa}
+/* Track Stats Bar */
+.track-stats-bar{display:none;margin-top:6px;padding:8px 12px;background:linear-gradient(135deg,#c0392b,#e74c3c);color:#fff;border-radius:10px;font-size:.8rem}
+.track-stats-bar.show{display:flex;gap:12px;justify-content:space-around;align-items:center;flex-wrap:wrap}
+.track-stat{text-align:center}
+.track-stat-value{font-weight:bold;font-size:1rem}
+.track-stat-label{font-size:.6rem;opacity:.8}
+/* Measurement display */
+.measure-info{display:none;margin-top:6px;padding:8px 12px;background:#2980b9;color:#fff;border-radius:10px;font-size:.85rem}
+.measure-info.show{display:flex;justify-content:space-between;align-items:center}
+/* Track list panel */
+.tracks-panel{display:none;margin-top:8px;padding:10px;background:#f5f5f0;border:2px solid #1abc9c;border-radius:10px;max-height:200px;overflow-y:auto}
+.tracks-panel.show{display:block}
+.track-item{display:flex;justify-content:space-between;align-items:center;padding:8px;background:#fff;border-radius:6px;margin-bottom:6px;font-size:.8rem;border-left:4px solid #e74c3c}
+.track-item .ti-info{flex:1}
+.track-item .ti-name{font-weight:bold;color:#1a3d2e}
+.track-item .ti-meta{font-size:.7rem;color:#888}
+.track-item .ti-actions{display:flex;gap:4px}
+.track-item .ti-actions button{border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:.75rem;color:#fff}
+/* Waypoint form */
+.wp-form-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:6000;align-items:center;justify-content:center}
+.wp-form-overlay.show{display:flex}
+.wp-form{background:#fff;border-radius:12px;width:90%;max-width:340px;padding:20px;box-shadow:0 8px 30px rgba(0,0,0,.3)}
+.wp-form h3{margin:0 0 12px;color:#8e44ad}
+.wp-form input,.wp-form textarea{width:100%;padding:10px;border:2px solid #ddd;border-radius:8px;font-size:.85rem;margin-bottom:8px;box-sizing:border-box}
+.wp-form textarea{height:60px;resize:vertical}
+.wp-form .wp-actions{display:flex;gap:8px;justify-content:flex-end}
+.wp-form .wp-actions button{border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:bold;font-size:.85rem}
+/* Offline tiles panel */
+.offline-panel{display:none;margin-top:8px;padding:12px;background:#f0f8f0;border:2px solid #1a3d2e;border-radius:10px}
+.offline-panel.show{display:block}
+.offline-panel .offline-info{font-size:.8rem;color:#555;margin-bottom:8px}
+.offline-panel .offline-progress{height:8px;background:#ddd;border-radius:4px;overflow:hidden;margin-top:6px}
+.offline-panel .offline-progress-bar{height:100%;background:#27ae60;border-radius:4px;transition:width .3s}
+/* Fullscreen GPS tools */
+.mapa-fullscreen .gps-float-panel{display:flex!important}
+.gps-float-panel{display:none;position:fixed;bottom:20px;left:10px;right:10px;z-index:5100;background:rgba(26,61,46,.92);color:#fff;border-radius:12px;padding:10px 14px;font-family:'Courier New',monospace;justify-content:space-around;box-shadow:0 4px 16px rgba(0,0,0,.3)}
+.gps-float-item{text-align:center}
+.gps-float-label{font-size:.55rem;color:#88d8b0;text-transform:uppercase}
+.gps-float-value{font-size:.95rem;font-weight:bold}
 </style>
 </head>
 <body>
@@ -457,6 +517,67 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <button class="btn-camera" style="background:#1a3d2e;margin:0;font-size:.85rem" onclick="toggleMapaFullscreen()">⛶ Pantalla completa</button>
 <button class="btn-camera" style="background:#9b59b6;margin:0;font-size:.85rem" onclick="abrirExportarMapaPDF()">📄 PDF Unidad</button>
 </div>
+<!-- GPS Tools Bar -->
+<div class="gps-tools-bar">
+<button class="btn-track-rec" id="btnTrackRec" onclick="toggleTrackRec()">⏺ Grabar</button>
+<button class="btn-track-pause" id="btnTrackPause" onclick="pausarTrack()" style="display:none">⏸ Pausa</button>
+<button class="btn-track-stop" id="btnTrackStop" onclick="pararTrack()" style="display:none">⏹ Parar</button>
+<button class="btn-measure" id="btnMeasure" onclick="toggleMedicion()">📏 Medir</button>
+<button class="btn-waypoint" onclick="crearWaypoint()">📌 Waypoint</button>
+<button class="btn-gpx" onclick="toggleTracksPanel()">📋 Tracks</button>
+<label class="btn-gpx" style="cursor:pointer;margin:0">📥 GPX<input type="file" accept=".gpx" style="display:none" onchange="importarGPX(this.files[0]);this.value=''"></label>
+<button class="btn-offline" onclick="toggleOfflinePanel()">💾 Offline</button>
+<button style="background:#1abc9c;color:#fff" onclick="toggleGPSInfo()">📡 GPS</button>
+</div>
+<!-- GPS Info Panel -->
+<div class="gps-info-panel" id="gps-info-panel">
+<div class="gps-info-grid">
+<div class="gps-info-item"><div class="gps-info-label">Latitud</div><div class="gps-info-value" id="gps-lat">--</div></div>
+<div class="gps-info-item"><div class="gps-info-label">Longitud</div><div class="gps-info-value" id="gps-lon">--</div></div>
+<div class="gps-info-item"><div class="gps-info-label">Altitud</div><div class="gps-info-value" id="gps-alt">--</div><div class="gps-info-unit">m</div></div>
+<div class="gps-info-item"><div class="gps-info-label">UTM</div><div class="gps-info-value" id="gps-utm" style="font-size:.8rem">--</div></div>
+<div class="gps-info-item"><div class="gps-info-label">Velocidad</div><div class="gps-info-value" id="gps-speed">--</div><div class="gps-info-unit">km/h</div></div>
+<div class="gps-info-item"><div class="gps-info-label">Precisión</div><div class="gps-info-value" id="gps-acc">--</div><div class="gps-info-unit">m</div></div>
+<div class="gps-info-item"><div class="gps-info-label">Rumbo</div><div class="gps-info-value" id="gps-heading">--</div><div class="gps-info-unit">°</div></div>
+<div class="gps-info-item"><div class="gps-info-label">Satélites</div><div class="gps-info-value" id="gps-sats">--</div></div>
+<div class="gps-info-item"><div class="gps-info-label">Señal</div><div class="gps-info-value" id="gps-signal">--</div></div>
+</div>
+</div>
+<!-- Track Stats Bar (visible durante grabación) -->
+<div class="track-stats-bar" id="track-stats-bar">
+<div class="track-stat"><div class="track-stat-value" id="track-dist">0.0</div><div class="track-stat-label">km</div></div>
+<div class="track-stat"><div class="track-stat-value" id="track-time">00:00</div><div class="track-stat-label">Tiempo</div></div>
+<div class="track-stat"><div class="track-stat-value" id="track-speed">0.0</div><div class="track-stat-label">km/h</div></div>
+<div class="track-stat"><div class="track-stat-value" id="track-pts">0</div><div class="track-stat-label">Puntos</div></div>
+<div class="track-stat"><div class="track-stat-value" id="track-elev">--</div><div class="track-stat-label">Alt (m)</div></div>
+</div>
+<!-- Medición -->
+<div class="measure-info" id="measure-info">
+<span id="measure-text">Toca el mapa para medir distancia</span>
+<button onclick="limpiarMedicion()" style="background:#fff;color:#2980b9;border:none;padding:4px 10px;border-radius:6px;font-weight:bold;cursor:pointer">Limpiar</button>
+</div>
+<!-- Panel de tracks guardados -->
+<div class="tracks-panel" id="tracks-panel">
+<div style="font-weight:bold;color:#1a3d2e;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+<span>Tracks guardados</span><button onclick="document.getElementById('tracks-panel').classList.remove('show')" style="background:none;border:none;cursor:pointer;font-size:1.1rem">✕</button></div>
+<div id="tracks-list"></div>
+</div>
+<!-- Panel offline tiles -->
+<div class="offline-panel" id="offline-panel">
+<div style="font-weight:bold;color:#1a3d2e;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">
+<span>💾 Descargar tiles offline</span><button onclick="document.getElementById('offline-panel').classList.remove('show')" style="background:none;border:none;cursor:pointer;font-size:1.1rem">✕</button></div>
+<div class="offline-info">Descarga las tiles del área visible del mapa para usar sin conexión.</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap">
+<select id="offline-zoom-range" style="padding:6px;border:2px solid #1a3d2e;border-radius:6px;font-size:.8rem">
+<option value="2">Zoom actual ±2</option>
+<option value="3">Zoom actual ±3</option>
+<option value="4" selected>Zoom actual ±4</option>
+</select>
+<button onclick="descargarTilesOffline()" style="background:#27ae60;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-weight:bold;cursor:pointer;font-size:.8rem">Descargar</button>
+</div>
+<div id="offline-status" style="font-size:.75rem;color:#555;margin-top:6px"></div>
+<div class="offline-progress"><div class="offline-progress-bar" id="offline-progress-bar" style="width:0%"></div></div>
+</div>
 <div id="capas-lista" style="margin-top:8px"></div>
 <!-- Selector de unidad para PDF -->
 <div id="mapa-pdf-panel" style="display:none;margin-top:8px;padding:12px;background:#f8f4ff;border:2px solid #8e44ad;border-radius:10px">
@@ -485,6 +606,9 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <button class="btn-fs-action" onclick="centrarEnMiPosicion()">📍</button>
 <select id="mapa-filtro-tipo-fs" onchange="document.getElementById('mapa-filtro-tipo').value=this.value;actualizarMarcadoresMapa()" style="color:#333"><option value="">Tipo</option><option value="VP">VP</option><option value="EL">EL</option><option value="EI">EI</option><option value="infra">Infra</option></select>
 <button class="btn-fs-action" onclick="toggleMapaSearchFS()">🔍</button>
+<button class="btn-fs-action" id="btnTrackRecFS" onclick="toggleTrackRec()" style="background:#e74c3c">⏺</button>
+<button class="btn-fs-action" onclick="toggleMedicion()" style="background:#3498db">📏</button>
+<button class="btn-fs-action" onclick="crearWaypoint()" style="background:#8e44ad">📌</button>
 </div>
 <!-- Buscador flotante para fullscreen -->
 <div class="mapa-search-float" id="mapa-search-float">
@@ -492,6 +616,26 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <input type="text" class="mapa-search-input" id="mapa-search-fs" placeholder="Buscar unidad, waypoint..." oninput="buscarEnMapa(this.value,'mapa-search-results-fs')" onfocus="if(this.value)buscarEnMapa(this.value,'mapa-search-results-fs')">
 <button class="mapa-search-clear" onclick="document.getElementById('mapa-search-fs').value='';document.getElementById('mapa-search-results-fs').classList.remove('show');document.getElementById('mapa-search-float').style.display='none'">✕</button>
 <div class="mapa-search-results" id="mapa-search-results-fs"></div>
+</div>
+</div>
+</div>
+<!-- GPS Panel flotante (fullscreen) -->
+<div class="gps-float-panel" id="gps-float-panel">
+<div class="gps-float-item"><div class="gps-float-label">Vel</div><div class="gps-float-value" id="gps-f-speed">--</div></div>
+<div class="gps-float-item"><div class="gps-float-label">Alt</div><div class="gps-float-value" id="gps-f-alt">--</div></div>
+<div class="gps-float-item"><div class="gps-float-label">Dist</div><div class="gps-float-value" id="gps-f-dist">--</div></div>
+<div class="gps-float-item"><div class="gps-float-label">UTM</div><div class="gps-float-value" id="gps-f-utm" style="font-size:.7rem">--</div></div>
+</div>
+<!-- Waypoint form modal -->
+<div class="wp-form-overlay" id="wp-form-overlay">
+<div class="wp-form">
+<h3>📌 Nuevo Waypoint</h3>
+<input type="text" id="wp-nombre" placeholder="Nombre del waypoint">
+<textarea id="wp-notas" placeholder="Notas (opcional)"></textarea>
+<div style="font-size:.8rem;color:#888;margin-bottom:8px" id="wp-coords"></div>
+<div class="wp-actions">
+<button style="background:#eee;color:#333" onclick="cerrarFormWaypoint()">Cancelar</button>
+<button style="background:#8e44ad;color:#fff" onclick="guardarWaypoint()">Guardar</button>
 </div>
 </div>
 </div>
