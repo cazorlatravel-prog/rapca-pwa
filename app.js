@@ -171,14 +171,14 @@ function obtenerTodasLasFotos(){
 
 function limpiarFotosAntiguasDB(){
   if(!fotosDB)return;
-  var limite=Date.now()-5*24*60*60*1000;
+  var limite=Date.now()-30*24*60*60*1000; // 30 días de retención
   try{
     var tx=fotosDB.transaction(['fotos'],'readwrite');
     var store=tx.objectStore('fotos');
     store.openCursor().onsuccess=function(e){
       var cursor=e.target.result;
       if(cursor){
-        if(cursor.value.fecha<limite){cursor.delete();console.log('Foto antigua borrada');}
+        if(cursor.value.fecha<limite){cursor.delete();console.log('Foto >30 días borrada:',cursor.value.codigo);}
         cursor.continue();
       }
     };
@@ -216,7 +216,9 @@ function procesarSubidasPendientes(){
 }
 function subirFotoNube(codigo,dataUrl,unidad,tipo){
   if(!isOnline)return;
-  fetch(UPLOAD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codigo:codigo,imagen:dataUrl,unidad:unidad,tipo:tipo})}).then(function(res){if(!res.ok)throw new Error('HTTP '+res.status);return res.json();}).then(function(data){if(data.ok){eliminarSubidaPendiente(codigo);showToast('☁️ '+codigo,'success');}else throw new Error(data.error||'Error');}).catch(function(err){console.error('Error subida '+codigo+':',err);showToast('⚠️ '+codigo+' en cola','error');});
+  var payload=JSON.stringify({codigo:codigo,imagen:dataUrl,unidad:unidad,tipo:tipo});
+  console.log('Subiendo '+codigo+' ('+Math.round(payload.length/1024)+'KB)');
+  fetch(UPLOAD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:payload}).then(function(res){if(!res.ok)return res.text().then(function(t){throw new Error('HTTP '+res.status+': '+t);});return res.json();}).then(function(data){if(data.ok){eliminarSubidaPendiente(codigo);showToast('☁️ '+codigo,'success');}else throw new Error(data.error||'Error servidor');}).catch(function(err){console.error('Error subida '+codigo+':',err.message);showToast('⚠️ '+codigo+': '+err.message,'error');});
 }
 // Procesamiento secuencial de cola con reintentos
 function procesarColaSec(lista,idx){
@@ -233,7 +235,8 @@ function subirConReintentos(codigo,dataUrl,unidad,tipo,maxI,cb){
   var i=0;
   function intentar(){
     i++;
-    fetch(UPLOAD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codigo:codigo,imagen:dataUrl,unidad:unidad,tipo:tipo})}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}).then(function(d){if(d.ok){eliminarSubidaPendiente(codigo);cb(true);}else throw new Error(d.error||'Error');}).catch(function(e){console.error('Intento '+i+'/'+maxI+' '+codigo+':',e.message);if(i<maxI&&isOnline)setTimeout(intentar,i*2000);else cb(false);});
+    console.log('Subida '+codigo+' intento '+i+'/'+maxI);
+    fetch(UPLOAD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codigo:codigo,imagen:dataUrl,unidad:unidad,tipo:tipo})}).then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error('HTTP '+r.status+': '+t);});return r.json();}).then(function(d){if(d.ok){eliminarSubidaPendiente(codigo);console.log('Subida OK: '+codigo+(d.url?' → '+d.url:''));cb(true);}else throw new Error(d.error||'Error servidor');}).catch(function(e){console.error('Intento '+i+'/'+maxI+' '+codigo+':',e.message);if(i<maxI&&isOnline)setTimeout(intentar,i*2000);else{showToast('❌ '+codigo+': '+e.message,'error');cb(false);}});
   }
   intentar();
 }
@@ -651,6 +654,219 @@ function toggleMapaSearchFS(){
   var el=document.getElementById('mapa-search-float');
   if(el.style.display==='block'){el.style.display='none';}
   else{el.style.display='block';document.getElementById('mapa-search-fs').focus();}
+}
+
+// --- Exportar Mapa PDF por Unidad ---
+function abrirExportarMapaPDF(){
+  var panel=document.getElementById('mapa-pdf-panel');
+  var sel=document.getElementById('mapa-pdf-unidad');
+  // Poblar selector con unidades de infraestructuras
+  var infras=getInfras();
+  var h='<option value="">Selecciona unidad...</option>';
+  infras.forEach(function(inf){
+    h+='<option value="'+inf.id+'">'+(inf.idUnidad||'--')+' — '+(inf.nombre||'Sin nombre')+'</option>';
+  });
+  // Añadir unidades de registros que no tengan infraestructura
+  var rs=getRegistrosUsuario();
+  var unidadesInfra={};
+  infras.forEach(function(inf){if(inf.idUnidad)unidadesInfra[inf.idUnidad.toUpperCase()]=true;});
+  var unidadesSueltas={};
+  rs.forEach(function(r){
+    if(r.unidad){var u=r.unidad.toUpperCase();if(!unidadesInfra[u]&&!unidadesSueltas[u]){unidadesSueltas[u]=r.unidad;}}
+  });
+  Object.keys(unidadesSueltas).forEach(function(u){
+    h+='<option value="reg_'+u+'">'+unidadesSueltas[u]+' (solo registros)</option>';
+  });
+  sel.innerHTML=h;
+  panel.style.display='block';
+}
+
+function exportarMapaUnidadPDF(){
+  var sel=document.getElementById('mapa-pdf-unidad');
+  var val=sel.value;
+  if(!val){showToast('Selecciona una unidad','error');return;}
+
+  showLoading(true);
+  var infra=null,unidadId='';
+  if(val.indexOf('reg_')===0){
+    unidadId=val.replace('reg_','');
+  }else{
+    var infras=getInfras();
+    infra=infras.find(function(i){return i.id===parseInt(val)||i.id===val;});
+    if(infra)unidadId=infra.idUnidad||'';
+  }
+
+  // Recopilar registros de esta unidad
+  var rs=getRegistrosUsuario().filter(function(r){
+    return r.unidad&&r.unidad.toUpperCase()===unidadId.toUpperCase();
+  });
+  var vpCount=0,elCount=0,eiCount=0;
+  rs.forEach(function(r){if(r.tipo==='VP')vpCount++;else if(r.tipo==='EL')elCount++;else eiCount++;});
+
+  // Centrar mapa en la unidad si tiene coordenadas
+  var lat=null,lon=null;
+  if(infra&&infra.lat&&infra.lon){lat=parseFloat(infra.lat);lon=parseFloat(infra.lon);}
+  else{
+    // Buscar coordenadas en los registros
+    for(var i=0;i<rs.length;i++){if(rs[i].lat&&rs[i].lon){lat=rs[i].lat;lon=rs[i].lon;break;}}
+  }
+
+  if(lat&&lon&&mapaLeaflet){
+    mapaLeaflet.setView([lat,lon],15);
+    setTimeout(function(){capturarYGenerarPDF(infra,unidadId,lat,lon);},800);
+  }else{
+    capturarYGenerarPDF(infra,unidadId,lat,lon);
+  }
+}
+
+function capturarYGenerarPDF(infra,unidadId,lat,lon){
+  var mapaEl=document.getElementById('mapa');
+  var zoom=mapaLeaflet?mapaLeaflet.getZoom():15;
+
+  function generarConImagen(imgData){
+    var html=generarHTMLMapaPDF(infra,unidadId,lat,lon,imgData,zoom);
+    var w=window.open('','_blank');
+    if(!w){showToast('Permite ventanas emergentes para generar PDF','error');showLoading(false);return;}
+    w.document.write(html);
+    w.document.close();
+    showLoading(false);
+    document.getElementById('mapa-pdf-panel').style.display='none';
+  }
+
+  // Intentar capturar mapa con html2canvas
+  if(typeof html2canvas!=='undefined'&&mapaEl){
+    html2canvas(mapaEl,{useCORS:true,allowTaint:true,scale:2,logging:false}).then(function(canvas){
+      generarConImagen(canvas.toDataURL('image/jpeg',0.90));
+    }).catch(function(e){
+      console.error('Error capturando mapa:',e);
+      generarConImagen(null);
+    });
+  }else{
+    generarConImagen(null);
+  }
+}
+
+function calcularEscalaMapa(lat,zoom){
+  // Resolución en metros/pixel a nivel del mar: 156543.03 * cos(lat) / 2^zoom
+  var metrosPorPixel=156543.03*Math.cos(lat*Math.PI/180)/Math.pow(2,zoom);
+  // A4 impreso a 96 DPI: ~190mm de ancho útil = ~718 pixels
+  // Con scale:2 en html2canvas el mapa tiene más resolución, pero al imprimir
+  // se ajusta al ancho de página. Estimamos ~718px de ancho visible en pantalla
+  var anchoPxMapa=document.getElementById('mapa')?document.getElementById('mapa').offsetWidth:718;
+  var anchoMetros=anchoPxMapa*metrosPorPixel;
+  // Escala = anchoMetros / anchoReal en papel (0.19m para A4 con márgenes)
+  var escalaNum=Math.round(anchoMetros/0.19);
+  // Redondear a número "bonito"
+  var bonitos=[500,1000,2000,2500,5000,10000,15000,20000,25000,50000,75000,100000,150000,200000,250000,500000];
+  var mejor=escalaNum;
+  for(var i=0;i<bonitos.length;i++){
+    if(bonitos[i]>=escalaNum*0.7){mejor=bonitos[i];break;}
+  }
+  return '1:'+mejor.toLocaleString('es-ES');
+}
+
+function generarHTMLMapaPDF(infra,unidadId,lat,lon,imgData,zoom){
+  var fecha=new Date().toLocaleDateString('es-ES',{year:'numeric',month:'long',day:'numeric'});
+  var escala=(lat&&zoom)?calcularEscalaMapa(lat,zoom):'N/D';
+  var monte=infra?(infra.nombre||''):'';
+  var idZona=infra?(infra.idZona||''):'';
+  var municipio=infra?(infra.municipio||''):'';
+  var superficie=infra?(infra.superficie||''):'';
+
+  var h='<!DOCTYPE html><html><head><meta charset="utf-8"><title>RAPCA — '+(unidadId||'Mapa')+'</title>';
+  h+='<style>';
+  h+='@page{size:A4 landscape;margin:0}';
+  h+='*{margin:0;padding:0;box-sizing:border-box}';
+  h+='html,body{width:100%;height:100%;overflow:hidden;font-family:Arial,Helvetica,sans-serif}';
+  h+='.page{position:relative;width:297mm;height:210mm;overflow:hidden;background:#fff}';
+  // Borde del plano
+  h+='.marco{position:absolute;top:5mm;left:5mm;right:5mm;bottom:5mm;border:2px solid #1a3d2e}';
+  // Mapa ocupa todo
+  h+='.mapa-container{position:absolute;top:5mm;left:5mm;right:5mm;bottom:5mm;overflow:hidden}';
+  h+='.mapa-container img{width:100%;height:100%;object-fit:cover}';
+  // Sin mapa — fondo gris
+  h+='.sin-mapa{width:100%;height:100%;background:#e8e8e8;display:flex;align-items:center;justify-content:center;color:#999;font-size:1.5rem}';
+  // Título RAPCA arriba centrado
+  h+='.titulo{position:absolute;top:7mm;left:50%;transform:translateX(-50%);background:rgba(26,61,46,0.92);color:#fff;padding:6px 28px;border-radius:6px;font-size:14pt;font-weight:bold;letter-spacing:2px;z-index:10;box-shadow:0 2px 8px rgba(0,0,0,.3)}';
+  // Cajetín abajo izquierda
+  h+='.cajetin{position:absolute;bottom:8mm;left:8mm;background:rgba(255,255,255,0.95);border:2px solid #1a3d2e;border-radius:4px;padding:0;width:72mm;z-index:10;box-shadow:0 2px 10px rgba(0,0,0,.25);overflow:hidden}';
+  h+='.cajetin-header{background:#1a3d2e;color:#fff;padding:5px 10px;font-size:9pt;font-weight:bold;letter-spacing:1px;text-align:center}';
+  h+='.cajetin-body{padding:6px 10px}';
+  h+='.cajetin-row{display:flex;border-bottom:1px solid #ddd;padding:3px 0;font-size:7.5pt;line-height:1.3}';
+  h+='.cajetin-row:last-child{border-bottom:none}';
+  h+='.cajetin-label{width:28mm;font-weight:bold;color:#1a3d2e;flex-shrink:0}';
+  h+='.cajetin-value{flex:1;color:#333}';
+  h+='.cajetin-escala{border-top:2px solid #1a3d2e;padding:5px 10px;text-align:center;font-size:8.5pt;font-weight:bold;color:#1a3d2e;background:#f0f7f0}';
+  // Barra de escala gráfica abajo derecha
+  h+='.escala-grafica{position:absolute;bottom:8mm;right:8mm;z-index:10;text-align:center}';
+  h+='.escala-barra{display:flex;height:5mm;border:1px solid #333}';
+  h+='.escala-seg{width:15mm;height:100%}.escala-seg.negro{background:#1a3d2e}.escala-seg.blanco{background:#fff}';
+  h+='.escala-nums{display:flex;justify-content:space-between;font-size:6pt;color:#333;font-weight:bold;margin-top:1px;width:60mm}';
+  h+='.escala-titulo{font-size:6.5pt;color:#555;margin-top:1px}';
+  // Norte
+  h+='.norte{position:absolute;top:7mm;right:8mm;z-index:10;text-align:center;font-size:10pt;font-weight:bold;color:#1a3d2e;background:rgba(255,255,255,0.9);border-radius:50%;width:14mm;height:14mm;display:flex;flex-direction:column;align-items:center;justify-content:center;border:2px solid #1a3d2e;box-shadow:0 2px 6px rgba(0,0,0,.2)}';
+  h+='.norte-arrow{font-size:14pt;line-height:1}';
+  h+='.norte-n{font-size:7pt;letter-spacing:1px}';
+  // Print
+  h+='@media print{html,body{width:297mm;height:210mm;-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{page-break-after:avoid}}';
+  h+='</style></head><body>';
+
+  h+='<div class="page">';
+
+  // Mapa como fondo completo
+  h+='<div class="mapa-container">';
+  if(imgData){
+    h+='<img src="'+imgData+'" alt="Mapa">';
+  }else{
+    h+='<div class="sin-mapa">Sin captura de mapa disponible</div>';
+  }
+  h+='</div>';
+
+  // Marco/borde
+  h+='<div class="marco"></div>';
+
+  // Título RAPCA
+  h+='<div class="titulo">RAPCA</div>';
+
+  // Norte
+  h+='<div class="norte"><div class="norte-arrow">&#9650;</div><div class="norte-n">N</div></div>';
+
+  // Cajetín con datos
+  h+='<div class="cajetin">';
+  h+='<div class="cajetin-header">RAPCA &mdash; EMA</div>';
+  h+='<div class="cajetin-body">';
+  h+='<div class="cajetin-row"><div class="cajetin-label">ID Zona</div><div class="cajetin-value">'+(idZona||'—')+'</div></div>';
+  h+='<div class="cajetin-row"><div class="cajetin-label">ID Unidad</div><div class="cajetin-value">'+(unidadId||'—')+'</div></div>';
+  h+='<div class="cajetin-row"><div class="cajetin-label">Monte</div><div class="cajetin-value">'+(monte||'—')+'</div></div>';
+  h+='<div class="cajetin-row"><div class="cajetin-label">Municipio</div><div class="cajetin-value">'+(municipio||'—')+'</div></div>';
+  h+='<div class="cajetin-row"><div class="cajetin-label">Superficie</div><div class="cajetin-value">'+(superficie?superficie+' ha':'—')+'</div></div>';
+  h+='</div>';
+  h+='<div class="cajetin-escala">Escala aprox. '+escala+'</div>';
+  h+='</div>';
+
+  // Escala gráfica
+  var metrosPorPx=156543.03*Math.cos((lat||37.8)*Math.PI/180)/Math.pow(2,zoom||15);
+  // 15mm en papel ≈ cuántos metros reales (asumiendo 96dpi: 15mm ~ 57px en pantalla)
+  var metrosPorSeg=metrosPorPx*57;
+  // Redondear segmento a número bonito
+  var segs=[50,100,200,250,500,1000,2000,5000,10000];
+  var segMetros=metrosPorSeg;
+  for(var si=0;si<segs.length;si++){if(segs[si]>=metrosPorSeg*0.5){segMetros=segs[si];break;}}
+  var segLabel=segMetros>=1000?(segMetros/1000)+' km':segMetros+' m';
+  var seg2=segMetros*2;var seg2Label=seg2>=1000?(seg2/1000)+' km':seg2+' m';
+  var seg4=segMetros*4;var seg4Label=seg4>=1000?(seg4/1000)+' km':seg4+' m';
+
+  h+='<div class="escala-grafica">';
+  h+='<div class="escala-barra"><div class="escala-seg negro"></div><div class="escala-seg blanco"></div><div class="escala-seg negro"></div><div class="escala-seg blanco"></div></div>';
+  h+='<div class="escala-nums"><span>0</span><span>'+segLabel+'</span><span>'+seg2Label+'</span><span>'+seg4Label+'</span></div>';
+  h+='<div class="escala-titulo">Escala '+escala+'</div>';
+  h+='</div>';
+
+  h+='</div>'; // .page
+
+  h+='<script>setTimeout(function(){window.print();},1200);<\/script>';
+  h+='</body></html>';
+  return h;
 }
 
 // --- Capa de puntos comparativos y buscador ---
@@ -1185,12 +1401,26 @@ document.addEventListener('DOMContentLoaded',function(){
 });
 
 function initApp(){
+  // Solicitar almacenamiento persistente para que el navegador NO borre datos
+  if(navigator.storage&&navigator.storage.persist){
+    navigator.storage.persist().then(function(granted){
+      console.log('Almacenamiento persistente:',granted?'CONCEDIDO':'denegado');
+    });
+  }
   initFotosDB().then(function(){
     console.log('DB iniciada, fotos en memoria:',Object.keys(fotosCacheMemoria).length);
     limpiarFotosAntiguasDB();
     actualizarContadorSubidas();
     procesarSubidasPendientes();
   });
+  // Escuchar actualizaciones del Service Worker
+  if(navigator.serviceWorker){
+    navigator.serviceWorker.addEventListener('message',function(e){
+      if(e.data&&e.data.type==='SW_UPDATED'){
+        showToast('App actualizada ('+e.data.version+'). Tus datos están seguros.','success');
+      }
+    });
+  }
   var t=new Date().toISOString().split('T')[0];document.getElementById('vp-fecha').value=t;document.getElementById('ev-fecha').value=t;document.getElementById('el-fecha').value=t;
   var cVP=localStorage.getItem('rapca_contadores_VP'),cEI=localStorage.getItem('rapca_contadores_EI'),cEV=localStorage.getItem('rapca_contadores_EV'),cEL=localStorage.getItem('rapca_contadores_EL');if(cVP)contadorFotosVP=JSON.parse(cVP);if(cEI)contadorFotosEV=JSON.parse(cEI);else if(cEV)contadorFotosEV=JSON.parse(cEV);if(cEL)contadorFotosEL=JSON.parse(cEL);
   generarPlantas();generarPalatables();generarHerbaceas();updateSyncStatus();updatePendingCount();loadPanel();cargarBorradores();iniciarGeolocalizacion();initPreviewListeners();initCamposExtra();
