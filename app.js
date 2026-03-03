@@ -8,6 +8,7 @@ var contadorFotosVP={},contadorFotosEV={};
 var currentLat=null,currentLon=null,currentUTM=null;
 var deferredPrompt=null,mapTilesLoaded=[];
 var mapaLeaflet=null,controlCapas=null,capasKML={},capasKMLRaw={},marcadorPosicion=null;
+var syncEnProgreso=false,syncStats={total:0,ok:0,fail:0},fallosSubida=[];
 var fotosDB=null;
 var fotosCacheMemoria={}; // Cache en memoria como respaldo
 
@@ -113,21 +114,75 @@ function actualizarContadorSubidas(){
   try{var tx=fotosDB.transaction(['subidas_pendientes'],'readonly');var req=tx.objectStore('subidas_pendientes').count();req.onsuccess=function(){var el=document.getElementById('uploadCount');if(el)el.textContent=req.result||0;};}catch(e){}
 }
 function procesarSubidasPendientes(){
-  if(!fotosDB||!isOnline)return;
+  if(!fotosDB||!isOnline||syncEnProgreso)return;
   try{
     var tx=fotosDB.transaction(['subidas_pendientes'],'readonly');
     var req=tx.objectStore('subidas_pendientes').getAll();
     req.onsuccess=function(){
       var p=req.result||[];
       if(p.length===0)return;
-      showToast('☁️ Subiendo '+p.length+' fotos...','info');
-      p.forEach(function(item,i){setTimeout(function(){subirFotoNube(item.codigo,item.data,item.unidad,item.tipo);},i*1500);});
+      syncEnProgreso=true;
+      syncStats={total:p.length,ok:0,fail:0};
+      fallosSubida=[];
+      mostrarProgreso();
+      procesarColaSec(p,0);
     };
   }catch(e){console.error('Error procesando subidas:',e);}
 }
 function subirFotoNube(codigo,dataUrl,unidad,tipo){
   if(!isOnline)return;
-  fetch(UPLOAD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codigo:codigo,imagen:dataUrl,unidad:unidad,tipo:tipo})}).then(function(res){if(!res.ok)throw new Error('HTTP '+res.status);return res.json();}).then(function(data){if(data.ok){eliminarSubidaPendiente(codigo);showToast('☁️ '+codigo,'success');}else throw new Error(data.error||'Error');}).catch(function(err){console.error('Error subida '+codigo+':',err);});
+  fetch(UPLOAD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codigo:codigo,imagen:dataUrl,unidad:unidad,tipo:tipo})}).then(function(res){if(!res.ok)throw new Error('HTTP '+res.status);return res.json();}).then(function(data){if(data.ok){eliminarSubidaPendiente(codigo);showToast('☁️ '+codigo,'success');}else throw new Error(data.error||'Error');}).catch(function(err){console.error('Error subida '+codigo+':',err);showToast('⚠️ '+codigo+' en cola','error');});
+}
+// Procesamiento secuencial de cola con reintentos
+function procesarColaSec(lista,idx){
+  if(idx>=lista.length||!isOnline){finalizarSync();return;}
+  var item=lista[idx];
+  actualizarProgreso();
+  subirConReintentos(item.codigo,item.data,item.unidad,item.tipo,3,function(ok){
+    if(ok)syncStats.ok++;else{syncStats.fail++;fallosSubida.push(item.codigo);}
+    actualizarProgreso();
+    setTimeout(function(){procesarColaSec(lista,idx+1);},800);
+  });
+}
+function subirConReintentos(codigo,dataUrl,unidad,tipo,maxI,cb){
+  var i=0;
+  function intentar(){
+    i++;
+    fetch(UPLOAD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codigo:codigo,imagen:dataUrl,unidad:unidad,tipo:tipo})}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}).then(function(d){if(d.ok){eliminarSubidaPendiente(codigo);cb(true);}else throw new Error(d.error||'Error');}).catch(function(e){console.error('Intento '+i+'/'+maxI+' '+codigo+':',e.message);if(i<maxI&&isOnline)setTimeout(intentar,i*2000);else cb(false);});
+  }
+  intentar();
+}
+function finalizarSync(){
+  syncEnProgreso=false;
+  setTimeout(ocultarProgreso,1500);
+  actualizarContadorSubidas();
+  if(syncStats.fail===0&&syncStats.ok>0){showToast('✅ '+syncStats.ok+' fotos subidas','success');cerrarAlertaSync();}
+  else if(syncStats.fail>0){mostrarAlertaSync(syncStats.fail,syncStats.ok);notificarFalloAdmin(fallosSubida);}
+}
+// Barra de progreso en tiempo real
+function mostrarProgreso(){var el=document.getElementById('syncProgress');if(el)el.classList.add('show');actualizarProgreso();}
+function ocultarProgreso(){var el=document.getElementById('syncProgress');if(el)el.classList.remove('show');}
+function actualizarProgreso(){
+  var done=syncStats.ok+syncStats.fail,pct=syncStats.total>0?Math.round(done/syncStats.total*100):0;
+  var t=document.getElementById('syncProgressText'),c=document.getElementById('syncProgressCount'),b=document.getElementById('syncProgressBar');
+  if(t)t.textContent=syncStats.fail>0?'Subiendo fotos ('+syncStats.fail+' fallos)...':'Subiendo fotos...';
+  if(c)c.textContent=done+'/'+syncStats.total;
+  if(b)b.style.width=pct+'%';
+}
+// Alerta persistente de fallos
+function mostrarAlertaSync(fallos,exitos){
+  var el=document.getElementById('syncAlert'),txt=document.getElementById('syncAlertText');
+  if(!el)return;
+  var msg='⚠️ '+fallos+' foto'+(fallos>1?'s':'')+' no se pudieron subir';
+  if(exitos>0)msg+=' ('+exitos+' OK)';
+  if(txt)txt.textContent=msg;
+  el.classList.add('show');
+}
+function cerrarAlertaSync(){var el=document.getElementById('syncAlert');if(el)el.classList.remove('show');}
+// Notificación al administrador
+function notificarFalloAdmin(codigos){
+  if(!isOnline||codigos.length===0)return;
+  fetch('notificar.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codigos:codigos,error:'Fallo tras 3 reintentos por foto',dispositivo:navigator.userAgent})}).catch(function(){});
 }
 
 // --- Mapa de Visitas (Leaflet) ---
@@ -431,7 +486,7 @@ function capturarFoto(){
   if(isOnline)subirFotoNube(codigo,upData,upUnidad,camaraTipo);
 
   agregarFotoALista(codigo);
-  showToast('📷 '+codigo,'success');
+  showToast(isOnline?'📷☁️ '+codigo:'📷 '+codigo+' (offline)','success');
   document.getElementById('cameraModal').classList.remove('show');
   if(cameraStream){cameraStream.getTracks().forEach(function(t){t.stop();});cameraStream=null;}
 }

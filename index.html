@@ -117,6 +117,16 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .capas-item{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:#f9f9f9;border-radius:6px;margin-bottom:5px;font-size:.85rem}
 .capas-item button{background:#e74c3c;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:.75rem}
 .menu-btn.mapa{border-left:5px solid #3498db}
+.sync-progress{position:fixed;bottom:60px;left:10px;right:10px;background:#fff;border-radius:12px;padding:14px;box-shadow:0 4px 20px rgba(0,0,0,.25);z-index:900;display:none}
+.sync-progress.show{display:block}
+.progress-track{background:#e0e0e0;border-radius:5px;height:8px;overflow:hidden;margin-top:8px}
+.progress-fill{background:linear-gradient(90deg,#27ae60,#2ecc71);height:100%;width:0%;transition:width .3s ease;border-radius:5px}
+.sync-alert{position:fixed;top:85px;left:10px;right:10px;background:#fff3cd;border:2px solid #ffc107;border-radius:12px;padding:12px 14px;box-shadow:0 4px 20px rgba(0,0,0,.15);z-index:800;display:none;align-items:center;gap:10px}
+.sync-alert.show{display:flex}
+.sync-alert .alert-text{font-size:.85rem;color:#856404;flex:1}
+.sync-alert .alert-actions{display:flex;gap:6px;flex-shrink:0}
+.btn-retry{background:#ffc107;border:none;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:bold;color:#856404}
+.btn-dismiss{background:none;border:none;font-size:1.3rem;cursor:pointer;color:#856404;padding:4px}
 </style>
 </head>
 <body>
@@ -180,6 +190,20 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 
 <div class="loading" id="loading"><div class="spinner"></div></div>
 <div class="toast" id="toast"></div>
+<div class="sync-progress" id="syncProgress">
+<div style="display:flex;justify-content:space-between;align-items:center">
+<span id="syncProgressText" style="font-size:.85rem;font-weight:bold;color:#1a3d2e">Subiendo fotos...</span>
+<span id="syncProgressCount" style="font-size:.85rem;color:#666">0/0</span>
+</div>
+<div class="progress-track"><div class="progress-fill" id="syncProgressBar"></div></div>
+</div>
+<div class="sync-alert" id="syncAlert">
+<span class="alert-text" id="syncAlertText">⚠️ Error de subida</span>
+<div class="alert-actions">
+<button class="btn-retry" onclick="cerrarAlertaSync();procesarSubidasPendientes()">🔄 Reintentar</button>
+<button class="btn-dismiss" onclick="cerrarAlertaSync()">✖</button>
+</div>
+</div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="app.js"></script>
