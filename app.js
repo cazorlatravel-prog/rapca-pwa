@@ -171,14 +171,14 @@ function obtenerTodasLasFotos(){
 
 function limpiarFotosAntiguasDB(){
   if(!fotosDB)return;
-  var limite=Date.now()-5*24*60*60*1000;
+  var limite=Date.now()-30*24*60*60*1000; // 30 días de retención
   try{
     var tx=fotosDB.transaction(['fotos'],'readwrite');
     var store=tx.objectStore('fotos');
     store.openCursor().onsuccess=function(e){
       var cursor=e.target.result;
       if(cursor){
-        if(cursor.value.fecha<limite){cursor.delete();console.log('Foto antigua borrada');}
+        if(cursor.value.fecha<limite){cursor.delete();console.log('Foto >30 días borrada:',cursor.value.codigo);}
         cursor.continue();
       }
     };
@@ -216,7 +216,9 @@ function procesarSubidasPendientes(){
 }
 function subirFotoNube(codigo,dataUrl,unidad,tipo){
   if(!isOnline)return;
-  fetch(UPLOAD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codigo:codigo,imagen:dataUrl,unidad:unidad,tipo:tipo})}).then(function(res){if(!res.ok)throw new Error('HTTP '+res.status);return res.json();}).then(function(data){if(data.ok){eliminarSubidaPendiente(codigo);showToast('☁️ '+codigo,'success');}else throw new Error(data.error||'Error');}).catch(function(err){console.error('Error subida '+codigo+':',err);showToast('⚠️ '+codigo+' en cola','error');});
+  var payload=JSON.stringify({codigo:codigo,imagen:dataUrl,unidad:unidad,tipo:tipo});
+  console.log('Subiendo '+codigo+' ('+Math.round(payload.length/1024)+'KB)');
+  fetch(UPLOAD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:payload}).then(function(res){if(!res.ok)return res.text().then(function(t){throw new Error('HTTP '+res.status+': '+t);});return res.json();}).then(function(data){if(data.ok){eliminarSubidaPendiente(codigo);showToast('☁️ '+codigo,'success');}else throw new Error(data.error||'Error servidor');}).catch(function(err){console.error('Error subida '+codigo+':',err.message);showToast('⚠️ '+codigo+': '+err.message,'error');});
 }
 // Procesamiento secuencial de cola con reintentos
 function procesarColaSec(lista,idx){
@@ -233,7 +235,8 @@ function subirConReintentos(codigo,dataUrl,unidad,tipo,maxI,cb){
   var i=0;
   function intentar(){
     i++;
-    fetch(UPLOAD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codigo:codigo,imagen:dataUrl,unidad:unidad,tipo:tipo})}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}).then(function(d){if(d.ok){eliminarSubidaPendiente(codigo);cb(true);}else throw new Error(d.error||'Error');}).catch(function(e){console.error('Intento '+i+'/'+maxI+' '+codigo+':',e.message);if(i<maxI&&isOnline)setTimeout(intentar,i*2000);else cb(false);});
+    console.log('Subida '+codigo+' intento '+i+'/'+maxI);
+    fetch(UPLOAD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codigo:codigo,imagen:dataUrl,unidad:unidad,tipo:tipo})}).then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error('HTTP '+r.status+': '+t);});return r.json();}).then(function(d){if(d.ok){eliminarSubidaPendiente(codigo);console.log('Subida OK: '+codigo+(d.url?' → '+d.url:''));cb(true);}else throw new Error(d.error||'Error servidor');}).catch(function(e){console.error('Intento '+i+'/'+maxI+' '+codigo+':',e.message);if(i<maxI&&isOnline)setTimeout(intentar,i*2000);else{showToast('❌ '+codigo+': '+e.message,'error');cb(false);}});
   }
   intentar();
 }
@@ -1081,12 +1084,26 @@ document.addEventListener('DOMContentLoaded',function(){
 });
 
 function initApp(){
+  // Solicitar almacenamiento persistente para que el navegador NO borre datos
+  if(navigator.storage&&navigator.storage.persist){
+    navigator.storage.persist().then(function(granted){
+      console.log('Almacenamiento persistente:',granted?'CONCEDIDO':'denegado');
+    });
+  }
   initFotosDB().then(function(){
     console.log('DB iniciada, fotos en memoria:',Object.keys(fotosCacheMemoria).length);
     limpiarFotosAntiguasDB();
     actualizarContadorSubidas();
     procesarSubidasPendientes();
   });
+  // Escuchar actualizaciones del Service Worker
+  if(navigator.serviceWorker){
+    navigator.serviceWorker.addEventListener('message',function(e){
+      if(e.data&&e.data.type==='SW_UPDATED'){
+        showToast('App actualizada ('+e.data.version+'). Tus datos están seguros.','success');
+      }
+    });
+  }
   var t=new Date().toISOString().split('T')[0];document.getElementById('vp-fecha').value=t;document.getElementById('ev-fecha').value=t;document.getElementById('el-fecha').value=t;
   var cVP=localStorage.getItem('rapca_contadores_VP'),cEI=localStorage.getItem('rapca_contadores_EI'),cEV=localStorage.getItem('rapca_contadores_EV'),cEL=localStorage.getItem('rapca_contadores_EL');if(cVP)contadorFotosVP=JSON.parse(cVP);if(cEI)contadorFotosEV=JSON.parse(cEI);else if(cEV)contadorFotosEV=JSON.parse(cEV);if(cEL)contadorFotosEL=JSON.parse(cEL);
   generarPlantas();generarPalatables();generarHerbaceas();updateSyncStatus();updatePendingCount();loadPanel();cargarBorradores();iniciarGeolocalizacion();initPreviewListeners();initCamposExtra();

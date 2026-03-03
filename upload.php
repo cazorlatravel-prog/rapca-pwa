@@ -21,15 +21,18 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 // Leer JSON del body
 $raw = file_get_contents('php://input');
 if (empty($raw)) {
+    $maxSize = ini_get('post_max_size');
     http_response_code(400);
-    echo json_encode(['error' => 'Payload vacío. Verificar post_max_size en php.ini']);
+    echo json_encode(['error' => 'Payload vacío. post_max_size=' . $maxSize . '. Verificar php.ini']);
     exit;
 }
 
 $input = json_decode($raw, true);
 if (!$input) {
+    $jsonErr = json_last_error_msg();
+    $rawLen = strlen($raw);
     http_response_code(400);
-    echo json_encode(['error' => 'JSON inválido']);
+    echo json_encode(['error' => 'JSON inválido (tamaño=' . $rawLen . ' bytes, json_error=' . $jsonErr . '). Posible truncamiento por post_max_size=' . ini_get('post_max_size')]);
     exit;
 }
 
@@ -56,18 +59,21 @@ $folder     = 'rapca/' . $tipo . '/' . $unidad;
 $public_id  = $codigo;
 
 // Firma: parámetros ordenados alfabéticamente + API secret
-$params_to_sign = 'folder=' . $folder . '&public_id=' . $public_id . '&timestamp=' . $timestamp;
+// Incluir invalidate y overwrite para permitir reintentos y resubidas
+$params_to_sign = 'folder=' . $folder . '&invalidate=true&overwrite=true&public_id=' . $public_id . '&timestamp=' . $timestamp;
 $signature = sha1($params_to_sign . CLOUDINARY_API_SECRET);
 
 $cloudinary_url = 'https://api.cloudinary.com/v1_1/' . CLOUDINARY_CLOUD_NAME . '/image/upload';
 
 $post_fields = [
-    'file'      => $imagen,
-    'api_key'   => CLOUDINARY_API_KEY,
-    'timestamp' => $timestamp,
-    'signature' => $signature,
-    'folder'    => $folder,
-    'public_id' => $public_id
+    'file'       => $imagen,
+    'api_key'    => CLOUDINARY_API_KEY,
+    'timestamp'  => $timestamp,
+    'signature'  => $signature,
+    'folder'     => $folder,
+    'public_id'  => $public_id,
+    'overwrite'  => 'true',
+    'invalidate' => 'true'
 ];
 
 $ch = curl_init($cloudinary_url);
@@ -75,8 +81,8 @@ curl_setopt_array($ch, [
     CURLOPT_POST           => true,
     CURLOPT_POSTFIELDS     => $post_fields,
     CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_TIMEOUT        => 60,
-    CURLOPT_CONNECTTIMEOUT => 15,
+    CURLOPT_TIMEOUT        => 120,
+    CURLOPT_CONNECTTIMEOUT => 20,
     CURLOPT_SSL_VERIFYPEER => true
 ]);
 
@@ -130,9 +136,14 @@ try {
         INDEX idx_codigo (codigo)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+    // Añadir índice único si no existe (para upsert en reintentos)
+    try { $pdo->exec("ALTER TABLE fotos ADD UNIQUE INDEX idx_codigo_unico (codigo)"); } catch (PDOException $ignore) {}
+
     $stmt = $pdo->prepare(
         'INSERT INTO fotos (codigo, unidad, tipo, cloudinary_url, public_id, ancho, alto, tamano)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE cloudinary_url=VALUES(cloudinary_url), public_id=VALUES(public_id),
+            ancho=VALUES(ancho), alto=VALUES(alto), tamano=VALUES(tamano), fecha_subida=NOW()'
     );
     $stmt->execute([
         $codigo,
