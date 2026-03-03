@@ -22,9 +22,12 @@ body{font-family:-apple-system,sans-serif;background:#f5f5f0;color:#1a3d2e;min-h
 .sync-status{font-size:.75rem;padding:4px 10px;border-radius:12px}
 .sync-status.online{background:#27ae60}
 .sync-status.offline{background:#e74c3c}
-.nav{display:flex;background:#fff;border-bottom:1px solid #ddd;overflow-x:auto;-webkit-overflow-scrolling:touch}
-.nav-btn{flex:0 0 auto;padding:12px 6px;border:none;background:#fff;font-size:.9rem;cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
-.nav-btn.active{border-bottom-color:#5b8c5a;color:#5b8c5a;font-weight:bold}
+.nav{display:flex;background:#fff;border-bottom:1px solid #e0e0e0;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:0 4px;gap:2px;scrollbar-width:none}
+.nav::-webkit-scrollbar{display:none}
+.nav-btn{flex:0 0 auto;padding:8px 6px 6px;border:none;background:transparent;font-size:.6rem;cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap;display:flex;flex-direction:column;align-items:center;gap:2px;color:#888;transition:all .2s ease;border-radius:8px 8px 0 0;min-width:48px}
+.nav-btn .nav-icon{font-size:1.2rem;line-height:1}
+.nav-btn:hover{background:#f0f7f0;color:#1a3d2e}
+.nav-btn.active{border-bottom-color:#5b8c5a;color:#5b8c5a;font-weight:bold;background:#f0f7f0}
 .page{display:none;padding:15px;padding-bottom:100px}
 .page.active{display:block}
 .card{background:#fff;border-radius:10px;padding:15px;margin-bottom:12px;box-shadow:0 2px 6px rgba(0,0,0,.1)}
@@ -46,10 +49,15 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .btn-camera{background:#2ecc71;color:#fff;padding:12px 20px;font-size:1rem;display:inline-flex;align-items:center;gap:8px;border-radius:8px;border:none;cursor:pointer;margin:5px}
 .btn-camera.vp{background:#88d8b0;color:#1a3d2e}
 .btn-camera.ev{background:#fd9853;color:#fff}
-.menu-btn{display:block;padding:25px;margin-bottom:15px;background:#fff;border-radius:12px;color:#1a3d2e;font-size:1.2rem;font-weight:bold;box-shadow:0 2px 8px rgba(0,0,0,.1);text-align:center;cursor:pointer;border:none;width:100%}
-.menu-btn.vp{border-left:5px solid #88d8b0}
-.menu-btn.ev{border-left:5px solid #fd9853}
-.menu-btn.panel{border-left:5px solid #5b8c5a}
+.menu-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
+.menu-btn{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px 10px;background:#fff;border-radius:14px;color:#1a3d2e;font-size:.85rem;font-weight:600;box-shadow:0 2px 10px rgba(0,0,0,.08);text-align:center;cursor:pointer;border:none;width:100%;transition:transform .15s ease,box-shadow .15s ease;border-top:4px solid transparent;gap:6px}
+.menu-btn:hover{transform:translateY(-2px);box-shadow:0 4px 16px rgba(0,0,0,.14)}
+.menu-btn:active{transform:scale(.97)}
+.menu-btn .menu-icon{font-size:1.8rem;line-height:1}
+.menu-btn .menu-label{font-size:.75rem;color:#888;font-weight:400;margin-top:2px}
+.menu-btn.vp{border-top-color:#88d8b0}
+.menu-btn.ev{border-top-color:#fd9853}
+.menu-btn.panel{border-top-color:#5b8c5a}
 .pending-badge{background:#e74c3c;color:#fff;padding:3px 10px;border-radius:12px;font-size:.85rem;margin-left:8px}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:14px 28px;border-radius:10px;color:#fff;display:none;z-index:1000;max-width:90%;text-align:center;font-weight:bold}
 .toast.show{display:block}
@@ -114,11 +122,11 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .camera-modal .btn-capture{width:70px;height:70px;border-radius:50%;background:#fff;border:5px solid #5b8c5a;cursor:pointer}
 .camera-modal .btn-close-cam{background:#e74c3c;color:#fff;border:none;padding:12px 24px;border-radius:8px;cursor:pointer;font-size:1rem;font-weight:bold}
 .camera-modal .camera-info{color:#fff;font-size:.9rem;text-align:center;max-width:120px}
-.nav-btn{font-size:.7rem;padding:8px 2px}
+.nav-btn{font-size:.6rem;padding:8px 4px 6px;min-width:44px}
 #mapa{background:#e0e0e0}
 .capas-item{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:#f9f9f9;border-radius:6px;margin-bottom:5px;font-size:.85rem}
 .capas-item button{background:#e74c3c;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:.75rem}
-.menu-btn.mapa{border-left:5px solid #3498db}
+.menu-btn.mapa{border-top-color:#3498db}
 .sync-progress{position:fixed;bottom:60px;left:10px;right:10px;background:#fff;border-radius:12px;padding:14px;box-shadow:0 4px 20px rgba(0,0,0,.25);z-index:900;display:none}
 .sync-progress.show{display:block}
 .progress-track{background:#e0e0e0;border-radius:5px;height:8px;overflow:hidden;margin-top:8px}
@@ -141,8 +149,8 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .btn-preview.annotate.active{background:#e74c3c}
 .btn-preview.repeat{background:#e67e22}
 .btn-preview.accept{background:#27ae60}
-.menu-btn.ganadero{border-left:5px solid #3498db}
-.menu-btn.infra{border-left:5px solid #8e44ad}
+.menu-btn.ganadero{border-top-color:#3498db}
+.menu-btn.infra{border-top-color:#8e44ad}
 .record-card{background:#fff;border-radius:8px;padding:12px;margin-bottom:8px;box-shadow:0 1px 4px rgba(0,0,0,.08);border-left:4px solid #ddd}
 .record-card.ganadero{border-left-color:#3498db}
 .record-card.infra{border-left-color:#8e44ad}
@@ -222,9 +230,9 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .comp-side .comp-img-box .comp-label{padding:6px;font-size:.75rem;font-weight:bold;color:#1a3d2e;background:#f5f5f0}
 .map-filters{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .map-filters select{padding:8px;border:2px solid #ddd;border-radius:8px;font-size:.8rem;flex:1;min-width:80px}
-.menu-btn.dash{border-left:5px solid #f39c12}
-.menu-btn.timeline{border-left:5px solid #e74c3c}
-.menu-btn.comparador{border-left:5px solid #1abc9c}
+.menu-btn.dash{border-top-color:#f39c12}
+.menu-btn.timeline{border-top-color:#e74c3c}
+.menu-btn.comparador{border-top-color:#1abc9c}
 /* Global Search Modal */
 .search-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:4500;display:none;align-items:flex-start;justify-content:center;padding:60px 15px 15px}
 .search-overlay.show{display:flex}
@@ -252,7 +260,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .state-badge.ev-badge,.state-badge.ei-badge{background:#fd9853}
 .state-badge.foto-badge{background:#9b59b6}
 /* EL accent color */
-.menu-btn.el{border-left:5px solid #2ecc71}
+.menu-btn.el{border-top-color:#2ecc71}
 .btn-el{background:#2ecc71!important;color:#fff}
 .btn-camera.el{background:#2ecc71;color:#fff}
 .tipo.el{background:#d5f5e3;color:#196f3d}
@@ -268,14 +276,34 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <div class="form-group"><label>Contraseña</label><input type="password" id="login-password" placeholder="Contraseña"></div>
 <button class="btn-login" id="btnLogin" onclick="iniciarSesion()">Entrar</button>
 <p style="margin-top:12px;font-size:.7rem;color:#999;text-align:center">Admin: rapcajaen@gmail.com</p>
-<p style="margin-top:8px;font-size:.65rem;color:#bbb;text-align:center">v30</p>
+<p style="margin-top:8px;font-size:.65rem;color:#bbb;text-align:center">v31</p>
 <p style="margin-top:4px;text-align:center"><a href="#" onclick="forzarActualizacion();return false;" style="font-size:.65rem;color:#5b8c5a">Forzar actualización</a></p>
 </div>
 </div>
 <div class="header"><h1>🌿 RAPCA Campo</h1><span class="sync-status" id="syncStatus">...</span><div class="user-bar" id="userBar" style="display:none"><span class="user-name" id="userName">--</span><span id="userRole" style="font-size:.65rem;opacity:.7">--</span><button class="btn-logout" onclick="abrirBusqueda()" style="background:rgba(255,255,255,.15);margin-right:4px">🔍</button><button class="btn-logout" onclick="cerrarSesion()">Salir</button></div></div>
-<nav class="nav"><button class="nav-btn active" onclick="showPage('menu')">Menú</button><button class="nav-btn" onclick="showPage('vp')">VP</button><button class="nav-btn" onclick="showPage('el')">EL</button><button class="nav-btn" onclick="showPage('ev')">EI</button><button class="nav-btn" onclick="showPage('mapa')">Mapa</button><button class="nav-btn" onclick="showPage('ganadero')">Gan.</button><button class="nav-btn" onclick="showPage('infra')">Infra</button><button class="nav-btn" onclick="showPage('panel')">Panel<span id="pendingBadge" class="pending-badge" style="display:none">0</span></button><button class="nav-btn" onclick="showPage('dashboard')">Dash</button><button class="nav-btn" onclick="showPage('timeline')">Hist.</button><button class="nav-btn" onclick="showPage('comparador')">Comp.</button></nav>
+<nav class="nav"><button class="nav-btn active" onclick="showPage('menu')"><span class="nav-icon">🏠</span>Menú</button><button class="nav-btn" onclick="showPage('vp')"><span class="nav-icon">🔍</span>VP</button><button class="nav-btn" onclick="showPage('el')"><span class="nav-icon">📋</span>EL</button><button class="nav-btn" onclick="showPage('ev')"><span class="nav-icon">📊</span>EI</button><button class="nav-btn" onclick="showPage('mapa')"><span class="nav-icon">🗺️</span>Mapa</button><button class="nav-btn" onclick="showPage('ganadero')"><span class="nav-icon">🐄</span>Gan.</button><button class="nav-btn" onclick="showPage('infra')"><span class="nav-icon">🏗️</span>Infra</button><button class="nav-btn" onclick="showPage('panel')"><span class="nav-icon">📂</span>Panel<span id="pendingBadge" class="pending-badge" style="display:none">0</span></button><button class="nav-btn" onclick="showPage('dashboard')"><span class="nav-icon">📈</span>Dash</button><button class="nav-btn" onclick="showPage('timeline')"><span class="nav-icon">📅</span>Hist.</button><button class="nav-btn" onclick="showPage('comparador')"><span class="nav-icon">🔄</span>Comp.</button></nav>
 
-<div id="page-menu" class="page active"><div style="max-width:400px;margin:20px auto"><button id="installBtn" class="menu-btn" style="display:none;background:#27ae60;color:#fff;border-left:5px solid #1e8449" onclick="instalarApp()">📲 Instalar App</button><button class="menu-btn vp" onclick="showPage('vp')">🔍 VP - Visita Previa</button><button class="menu-btn el" onclick="showPage('el')">📋 EL - Evaluación Ligera</button><button class="menu-btn ev" onclick="showPage('ev')">📊 EI - Evaluación Intensa</button><button class="menu-btn mapa" onclick="showPage('mapa')">🗺️ Mapa de Visitas</button><button class="menu-btn panel" onclick="showPage('panel')">📋 Panel de Registros</button><button class="menu-btn ganadero" onclick="showPage('ganadero')">🐄 Ganaderos</button><button class="menu-btn infra" onclick="showPage('infra')">🏗️ Infraestructuras</button><button class="menu-btn dash" onclick="showPage('dashboard')">📊 Dashboard</button><button class="menu-btn timeline" onclick="showPage('timeline')">📅 Historial</button><button class="menu-btn comparador" onclick="showPage('comparador')">🔄 Comparador Fotos</button><div class="card admin-only" id="adminPanel">
+<div id="page-menu" class="page active"><div style="max-width:500px;margin:20px auto"><button id="installBtn" class="menu-btn" style="display:none;background:#27ae60;color:#fff;border-top:4px solid #1e8449;grid-column:1/-1" onclick="instalarApp()"><span class="menu-icon">📲</span>Instalar App</button>
+<p style="font-size:.7rem;font-weight:bold;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding-left:4px">Trabajo de campo</p>
+<div class="menu-grid">
+<button class="menu-btn vp" onclick="showPage('vp')"><span class="menu-icon">🔍</span>VP<span class="menu-label">Visita Previa</span></button>
+<button class="menu-btn el" onclick="showPage('el')"><span class="menu-icon">📋</span>EL<span class="menu-label">Eval. Ligera</span></button>
+<button class="menu-btn ev" onclick="showPage('ev')"><span class="menu-icon">📊</span>EI<span class="menu-label">Eval. Intensa</span></button>
+<button class="menu-btn mapa" onclick="showPage('mapa')"><span class="menu-icon">🗺️</span>Mapa<span class="menu-label">Mapa de Visitas</span></button>
+</div>
+<p style="font-size:.7rem;font-weight:bold;color:#888;text-transform:uppercase;letter-spacing:1px;margin:16px 0 8px;padding-left:4px">Gestión</p>
+<div class="menu-grid">
+<button class="menu-btn ganadero" onclick="showPage('ganadero')"><span class="menu-icon">🐄</span>Ganaderos<span class="menu-label">Ficha ganadera</span></button>
+<button class="menu-btn infra" onclick="showPage('infra')"><span class="menu-icon">🏗️</span>Infra<span class="menu-label">Infraestructuras</span></button>
+<button class="menu-btn panel" onclick="showPage('panel')"><span class="menu-icon">📂</span>Panel<span class="menu-label">Registros</span></button>
+<button class="menu-btn dash" onclick="showPage('dashboard')"><span class="menu-icon">📈</span>Dashboard<span class="menu-label">Estadísticas</span></button>
+</div>
+<p style="font-size:.7rem;font-weight:bold;color:#888;text-transform:uppercase;letter-spacing:1px;margin:16px 0 8px;padding-left:4px">Herramientas</p>
+<div class="menu-grid">
+<button class="menu-btn timeline" onclick="showPage('timeline')"><span class="menu-icon">📅</span>Historial<span class="menu-label">Línea temporal</span></button>
+<button class="menu-btn comparador" onclick="showPage('comparador')"><span class="menu-icon">🔄</span>Comparador<span class="menu-label">Comparar fotos</span></button>
+</div>
+<div class="card admin-only" id="adminPanel">
 <div class="card-title" onclick="toggleSection('admin-users-section')"><span>👥 Gestión de Usuarios</span><span style="font-size:.75rem;color:#666">▼</span></div>
 <div class="section-content" id="admin-users-section">
 <div class="form-group"><label>Email *</label><input type="email" id="admin-nuevo-email" placeholder="operador@email.com"></div>
