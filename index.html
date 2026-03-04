@@ -384,6 +384,41 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .gal-lb-nav{position:absolute;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.15);border:none;color:#fff;font-size:1.5rem;padding:12px 16px;cursor:pointer;border-radius:10px;min-width:44px;min-height:44px;z-index:8100}
 .gal-lb-prev{left:8px}
 .gal-lb-next{right:8px}
+/* Galería Tabs */
+.gal-tabs{display:flex;gap:4px;margin-bottom:12px;border-bottom:2px solid #eee;padding-bottom:0}
+.gal-tab{flex:1;padding:10px 8px;border:none;background:transparent;font-size:.85rem;font-weight:bold;color:#888;cursor:pointer;border-bottom:3px solid transparent;transition:all .2s}
+.gal-tab.active{color:#e91e63;border-bottom-color:#e91e63}
+.gal-tab:active{background:#f5f5f0}
+/* Comparativas */
+.gal-comp-info{font-size:.8rem;color:#888;margin-bottom:10px}
+.gal-comp-visita{border:1px solid #e0e0e0;border-radius:10px;padding:10px;margin-bottom:12px}
+.gal-comp-visita-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #f0f0f0}
+.gal-comp-pair{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.gal-comp-pair-col{text-align:center;position:relative}
+.gal-comp-pair-img{width:100%;border-radius:6px;aspect-ratio:3/4;object-fit:cover;cursor:pointer}
+.gal-comp-pair-img:active{opacity:.8}
+.gal-comp-pair-code{font-size:.65rem;color:#555;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gal-comp-pair-empty{aspect-ratio:3/4;background:#f0f0f0;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#999;font-size:.8rem}
+.gal-comp-wp-label{display:inline-block;color:#fff;font-size:.7rem;font-weight:bold;padding:2px 8px;border-radius:4px;margin-bottom:4px}
+.gal-btn-comp-pair{padding:6px 16px;background:#1abc9c;color:#fff;border:none;border-radius:6px;font-size:.8rem;font-weight:bold;cursor:pointer}
+.gal-btn-comp-pair:active{background:#16a085}
+.gal-btn-comp-cross{padding:6px 16px;background:#3498db;color:#fff;border:none;border-radius:6px;font-size:.8rem;font-weight:bold;cursor:pointer}
+.gal-btn-comp-cross:active{background:#2980b9}
+/* Pre-caché */
+.gal-precache-desc{font-size:.85rem;color:#555;margin-bottom:12px;padding:10px;background:#f8f9fa;border-radius:8px;border-left:3px solid #e91e63}
+.gal-btn-precache{padding:8px 20px;background:#e91e63;color:#fff;border:none;border-radius:8px;font-size:.85rem;font-weight:bold;cursor:pointer;min-width:100px}
+.gal-btn-precache:active{background:#c2185b}
+.gal-precache-progress{margin-bottom:12px}
+.gal-precache-bar-bg{height:8px;background:#e0e0e0;border-radius:4px;overflow:hidden}
+.gal-precache-bar{height:100%;background:linear-gradient(90deg,#e91e63,#ff5722);border-radius:4px;transition:width .3s;width:0}
+.gal-precache-text{font-size:.75rem;color:#888;margin-top:4px}
+.gal-precache-item{display:flex;justify-content:space-between;align-items:center;padding:10px;border:1px solid #e0e0e0;border-radius:8px;margin-bottom:6px}
+.gal-precache-item-info{display:flex;flex-direction:column;gap:2px}
+.gal-precache-item-info strong{font-size:.9rem;color:#1a3d2e}
+.gal-precache-item-info span{font-size:.75rem;color:#888}
+.gal-precache-item-actions{display:flex;gap:6px}
+.gal-btn-ver-cache{padding:6px 12px;background:#5b8c5a;color:#fff;border:none;border-radius:6px;font-size:.75rem;cursor:pointer}
+.gal-btn-borrar-cache{padding:6px 12px;background:#e74c3c;color:#fff;border:none;border-radius:6px;font-size:.75rem;cursor:pointer}
 @media(max-width:480px){.gal-grupo-grid{grid-template-columns:repeat(3,1fr)}}
 /* Global Search Modal */
 .search-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:4500;display:none;align-items:flex-start;justify-content:center;padding:60px 15px 15px}
@@ -781,6 +816,13 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <div id="page-galeria" class="page">
 <div class="card">
 <div class="card-title">📸 Galería Cloudinary</div>
+<div class="gal-tabs">
+<button class="gal-tab active" data-tab="galeria" onclick="setGaleriaTab('galeria')">Todas</button>
+<button class="gal-tab" data-tab="comparativas" onclick="setGaleriaTab('comparativas')">Comparativas</button>
+<button class="gal-tab" data-tab="precache" onclick="setGaleriaTab('precache')">Pre-caché</button>
+</div>
+
+<div id="gal-vista-galeria">
 <div class="gal-toolbar">
 <div class="gal-filtros">
 <select id="gal-filtro-unidad" onchange="cargarFotosGaleria(true)"><option value="">Todas las unidades</option></select>
@@ -795,6 +837,29 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 </div>
 <div id="galeriaCompResult" style="display:none"></div>
 <div id="galeriaGrid" class="gal-grid"></div>
+</div>
+
+<div id="gal-vista-comparativas" style="display:none">
+<div class="gal-filtros" style="margin-bottom:12px">
+<select id="gal-comp-unidad" onchange="cargarComparativas()"><option value="">Selecciona unidad</option></select>
+</div>
+<div id="gal-comp-slider-result" style="display:none"></div>
+<div id="gal-comp-result"></div>
+</div>
+
+<div id="gal-vista-precache" style="display:none">
+<div class="gal-precache-desc">Descarga fotos comparativas antes de ir al campo. Se borran automáticamente a los 3 días.</div>
+<div class="gal-filtros" style="margin-bottom:12px">
+<select id="gal-precache-unidad"><option value="">Selecciona unidad</option></select>
+<button class="gal-btn-precache" onclick="precachearUnidad()">Descargar</button>
+</div>
+<div id="gal-precache-progress" class="gal-precache-progress" style="display:none">
+<div class="gal-precache-bar-bg"><div class="gal-precache-bar" id="gal-precache-bar"></div></div>
+<div class="gal-precache-text" id="gal-precache-text">--</div>
+</div>
+<div id="gal-precache-lista"></div>
+<div id="gal-precache-vista"></div>
+</div>
 </div>
 </div>
 

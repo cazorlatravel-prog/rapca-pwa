@@ -95,6 +95,74 @@ switch ($action) {
         echo json_encode(['ok' => true, 'stats' => $stats, 'total' => intval($totalFotos)]);
         break;
 
+    case 'comparativas':
+        // Fotos comparativas (W1/W2) de una unidad, agrupadas por fecha de subida
+        $unidad = trim($input['unidad'] ?? '');
+        if (!$unidad) {
+            echo json_encode(['error' => 'Se requiere unidad']);
+            break;
+        }
+
+        // Buscar fotos que contengan _W1_ o _W2_ en el código para esta unidad
+        $stmt = $pdo->prepare(
+            "SELECT codigo, unidad, tipo, cloudinary_url, ancho, alto, fecha_subida
+             FROM fotos
+             WHERE unidad = ? AND (codigo LIKE '%\\_W1\\_%' OR codigo LIKE '%\\_W2\\_%')
+             ORDER BY fecha_subida DESC"
+        );
+        $stmt->execute([$unidad]);
+        $fotos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Agrupar por visita (fecha + tipo)
+        $visitas = [];
+        foreach ($fotos as $f) {
+            // Extraer waypoint del código: UNIDAD_TIPO_W1_NUM o UNIDAD_TIPO_W2_NUM
+            preg_match('/_(W[12])_/', $f['codigo'], $m);
+            $wp = $m[1] ?? 'W?';
+            $fechaKey = substr($f['fecha_subida'], 0, 10) . '_' . $f['tipo'];
+            if (!isset($visitas[$fechaKey])) {
+                $visitas[$fechaKey] = [
+                    'fecha' => substr($f['fecha_subida'], 0, 10),
+                    'tipo' => $f['tipo'],
+                    'W1' => [],
+                    'W2' => []
+                ];
+            }
+            $visitas[$fechaKey][$wp][] = $f;
+        }
+
+        echo json_encode([
+            'ok' => true,
+            'unidad' => $unidad,
+            'visitas' => array_values($visitas)
+        ]);
+        break;
+
+    case 'fotos_unidad':
+        // Obtener URLs de fotos comparativas de una unidad para pre-cacheo
+        $unidad = trim($input['unidad'] ?? '');
+        if (!$unidad) {
+            echo json_encode(['error' => 'Se requiere unidad']);
+            break;
+        }
+
+        $stmt = $pdo->prepare(
+            "SELECT codigo, cloudinary_url, tipo, fecha_subida
+             FROM fotos
+             WHERE unidad = ? AND (codigo LIKE '%\\_W1\\_%' OR codigo LIKE '%\\_W2\\_%')
+             ORDER BY fecha_subida DESC"
+        );
+        $stmt->execute([$unidad]);
+        $fotos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        echo json_encode([
+            'ok' => true,
+            'unidad' => $unidad,
+            'fotos' => $fotos,
+            'total' => count($fotos)
+        ]);
+        break;
+
     default:
         echo json_encode(['error' => 'Acción no reconocida: ' . $action]);
         break;

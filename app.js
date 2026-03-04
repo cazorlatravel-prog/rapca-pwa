@@ -97,7 +97,7 @@ function migrarRegistrosEVaEI(){
 function initFotosDB(){
   return new Promise(function(resolve,reject){
     if(!window.indexedDB){console.warn('IndexedDB no soportada');resolve();return;}
-    var request=indexedDB.open('RAPCA_Fotos',3);
+    var request=indexedDB.open('RAPCA_Fotos',4);
     request.onerror=function(e){console.error('Error IndexedDB:',e);resolve();};
     request.onsuccess=function(e){fotosDB=e.target.result;console.log('IndexedDB lista');resolve();};
     request.onupgradeneeded=function(e){
@@ -113,6 +113,10 @@ function initFotosDB(){
       if(!db.objectStoreNames.contains('capas_kml')){
         db.createObjectStore('capas_kml',{keyPath:'nombre'});
         console.log('ObjectStore capas_kml creado');
+      }
+      if(!db.objectStoreNames.contains('galeria_cache')){
+        db.createObjectStore('galeria_cache',{keyPath:'codigo'});
+        console.log('ObjectStore galeria_cache creado');
       }
     };
   });
