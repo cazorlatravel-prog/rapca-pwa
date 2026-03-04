@@ -658,7 +658,7 @@ function actualizarListaCapas(){
       html+='</tr></thead><tbody id="capa-tbody-'+capaId+'">';
       var iconos={punto:'📍',linea:'〰️',poligono:'⬡'};
       subcapas.forEach(function(sc,idx){
-        var scNombre=sc.nombre||('Elemento '+(idx+1));
+        var scNombre=obtenerNombreDisplaySC(sc,idx,nombre);
         html+='<tr class="'+(sc.visible?'':'fila-oculta')+'" data-nombre="'+scNombre.toLowerCase()+'">';
         html+='<td class="col-check"><input type="checkbox"'+(sc.visible?' checked':'')+' onchange="toggleSubcapa(\''+nombreEsc+'\','+idx+',this.checked)"></td>';
         html+='<td class="col-nombre" title="'+(sc.desc||scNombre)+'">'+scNombre+'</td>';
@@ -764,6 +764,35 @@ function obtenerIdUnidadDesdeExtData(sc){
     }
   }
   return '';
+}
+function obtenerNombreDisplaySC(sc,idx,nombreCapa){
+  // Obtener el mejor nombre para mostrar de una subcapa KML
+  // 1. Si el usuario ya eligió un campo de etiqueta para esta capa, usar ese
+  if(nombreCapa&&capasKMLCampoLabel[nombreCapa]){
+    var campo=capasKMLCampoLabel[nombreCapa];
+    if(campo==='_nombre'&&sc.nombre&&sc.nombre!=='0'&&sc.nombre.trim())return sc.nombre.trim();
+    if(campo!=='_nombre'&&sc.extData&&sc.extData[campo]&&String(sc.extData[campo]).trim())return String(sc.extData[campo]).trim();
+  }
+  // 2. Intentar ID_Unidad
+  var idU=obtenerIdUnidadDesdeExtData(sc);
+  if(idU)return idU;
+  // 3. Si sc.nombre es útil (no es "0", no vacío, no solo números cortos)
+  if(sc.nombre&&sc.nombre.trim()&&!/^\d{1,2}$/.test(sc.nombre.trim()))return sc.nombre.trim();
+  // 4. Buscar campos identificadores comunes en extData
+  if(sc.extData){
+    var camposId=['Name','NOMBRE','Nombre','nombre','name','ID','Id','id','CODIGO','Codigo','codigo','PARCELA','Parcela','parcela','REFERENCIA','Referencia','referencia','COTO','Coto','coto','DENOMINACION','Denominacion','denominacion','DESCRIPCION','Descripcion','descripcion','TITULO','Titulo','titulo'];
+    for(var i=0;i<camposId.length;i++){
+      if(sc.extData[camposId[i]]&&String(sc.extData[camposId[i]]).trim())return String(sc.extData[camposId[i]]).trim();
+    }
+    // 5. Usar el primer campo no vacío de extData
+    var keys=Object.keys(sc.extData);
+    for(var i=0;i<keys.length;i++){
+      var v=String(sc.extData[keys[i]]).trim();
+      if(v&&v.length>0&&v.length<=80)return v;
+    }
+  }
+  // 6. Fallback
+  return 'Elemento '+(idx+1);
 }
 
 var capasKMLCampoLabel={}; // Guardar qué campo se usa como etiqueta por capa
@@ -934,13 +963,10 @@ function abrirExportarMapaPDF(){
     if(subcapas.length===0)return;
     h+='<optgroup label="📂 '+nombreCapa+'">';
     subcapas.forEach(function(sc,idx){
-      var idUnidadExt=obtenerIdUnidadDesdeExtData(sc);
-      var scNombre=idUnidadExt||sc.nombre||('Elemento '+(idx+1));
-      var scLabel=scNombre;
-      // Si extData tiene ID_Unidad diferente al nombre, mostrar ambos
-      if(idUnidadExt&&sc.nombre&&idUnidadExt!==sc.nombre)scLabel=idUnidadExt+' — '+sc.nombre;
-      h+='<option value="kml_'+nombreCapa+'_'+idx+'">'+scLabel+'</option>';
+      var scNombre=obtenerNombreDisplaySC(sc,idx,nombreCapa);
+      h+='<option value="kml_'+nombreCapa+'_'+idx+'">'+scNombre+'</option>';
       yaIncluidas[scNombre.toUpperCase()]=true;
+      var idUnidadExt=obtenerIdUnidadDesdeExtData(sc);
       if(idUnidadExt)yaIncluidas[idUnidadExt.toUpperCase()]=true;
     });
     h+='</optgroup>';
@@ -996,13 +1022,15 @@ function exportarMapaUnidadPDF(){
     var subcapas=capasKMLSubcapas[nombreCapa];
     if(subcapas&&subcapas[idx]){
       var sc=subcapas[idx];
-      // Buscar ID_Unidad en extData primero, luego nombre del placemark
+      var scDisplay=obtenerNombreDisplaySC(sc,idx,nombreCapa);
       var idUnidadKML=obtenerIdUnidadDesdeExtData(sc);
-      unidadId=idUnidadKML||sc.nombre||('Elemento '+(idx+1));
+      unidadId=scDisplay;
       kmlLayer=sc.layer;
       // Intentar vincular con infraestructura existente
       var infras=getInfras();
-      var textosBusca=[idUnidadKML,(sc.nombre||'').trim()].filter(function(t){return t.length>0;});
+      var textosBusca=[scDisplay,idUnidadKML,(sc.nombre||'').trim()].filter(function(t){return t&&t.length>0;});
+      // Eliminar duplicados
+      var uniqueBusca={};textosBusca=textosBusca.filter(function(t){var k=t.toUpperCase();if(uniqueBusca[k])return false;uniqueBusca[k]=true;return true;});
       for(var t=0;t<textosBusca.length&&!infra;t++){
         var buscaNorm=textosBusca[t].toUpperCase();
         for(var i=0;i<infras.length;i++){
@@ -3016,7 +3044,7 @@ function abrirTablaAtributos(nombreCapa){
   // Preparar datos
   attrTableDatos=subcapas.map(function(sc,idx){
     var fila={_idx:idx,_visible:sc.visible};
-    fila['Nombre']=sc.nombre||'Elemento '+(idx+1);
+    fila['Nombre']=obtenerNombreDisplaySC(sc,idx,nombre);
     fila['Tipo']=sc.tipo;
     fila['Lat']=sc.lat!==null?sc.lat.toFixed(6):'';
     fila['Lon']=sc.lon!==null?sc.lon.toFixed(6):'';
