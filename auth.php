@@ -33,15 +33,29 @@ try {
         fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-    $pdo->exec("CREATE TABLE IF NOT EXISTS sesiones (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        usuario_id INT NOT NULL,
-        token VARCHAR(128) NOT NULL UNIQUE,
-        fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP,
-        fecha_ultimo_acceso DATETIME DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_token (token),
-        FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS sesiones (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            usuario_id INT NOT NULL,
+            token VARCHAR(128) NOT NULL UNIQUE,
+            fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP,
+            fecha_ultimo_acceso DATETIME DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_token (token),
+            INDEX idx_usuario_id (usuario_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    } catch (PDOException $e2) {
+        // Si falla (p.ej. FK rota de versión anterior), intentar borrar y recrear
+        $pdo->exec("DROP TABLE IF EXISTS sesiones");
+        $pdo->exec("CREATE TABLE sesiones (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            usuario_id INT NOT NULL,
+            token VARCHAR(128) NOT NULL UNIQUE,
+            fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP,
+            fecha_ultimo_acceso DATETIME DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_token (token),
+            INDEX idx_usuario_id (usuario_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
 
     // Sembrar admin si no hay usuarios
     $count = $pdo->query("SELECT COUNT(*) FROM usuarios")->fetchColumn();
