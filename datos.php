@@ -75,6 +75,34 @@ try {
         INDEX idx_unidad_infra (idUnidad)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+    // Crear tabla de ganaderos
+    $pdo->exec("CREATE TABLE IF NOT EXISTS ganaderos_sync (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        ganadero_id BIGINT NOT NULL,
+        idGanadero VARCHAR(100),
+        zonas VARCHAR(200),
+        nombre VARCHAR(200),
+        direccion VARCHAR(300),
+        telefono VARCHAR(50),
+        email VARCHAR(255),
+        observaciones TEXT,
+        extras LONGTEXT,
+        usuario_email VARCHAR(255),
+        fecha_sync DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_ganadero (ganadero_id, usuario_email),
+        INDEX idx_usuario_gan (usuario_email)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // Crear tabla de campos personalizados
+    $pdo->exec("CREATE TABLE IF NOT EXISTS campos_extra_sync (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        tipo ENUM('ganadero','infra') NOT NULL,
+        campos LONGTEXT,
+        usuario_email VARCHAR(255),
+        fecha_sync DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_campos (tipo, usuario_email)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
 } catch (PDOException $e) {
     http_response_code(500);
     echo json_encode(['error' => 'Error de base de datos: ' . $e->getMessage()]);
@@ -265,6 +293,128 @@ switch ($action) {
             $pdo->prepare("DELETE FROM infraestructuras_sync WHERE infra_id = ? AND usuario_email = ?")->execute([$infraId, $user['email']]);
         }
         echo json_encode(['ok' => true]);
+        break;
+
+    // --- Ganaderos ---
+    case 'guardar_ganadero':
+        $ganadero = $input['ganadero'] ?? null;
+        if (!$ganadero) {
+            echo json_encode(['error' => 'Ganadero vacío']);
+            exit;
+        }
+        $stmt = $pdo->prepare("INSERT INTO ganaderos_sync (ganadero_id, idGanadero, zonas, nombre, direccion, telefono, email, observaciones, extras, usuario_email)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                               ON DUPLICATE KEY UPDATE idGanadero=VALUES(idGanadero), zonas=VALUES(zonas), nombre=VALUES(nombre),
+                               direccion=VALUES(direccion), telefono=VALUES(telefono), email=VALUES(email),
+                               observaciones=VALUES(observaciones), extras=VALUES(extras), fecha_sync=NOW()");
+        $stmt->execute([
+            $ganadero['id'],
+            $ganadero['idGanadero'] ?? '',
+            $ganadero['zonas'] ?? '',
+            $ganadero['nombre'] ?? '',
+            $ganadero['direccion'] ?? '',
+            $ganadero['telefono'] ?? '',
+            $ganadero['email'] ?? '',
+            $ganadero['observaciones'] ?? '',
+            json_encode($ganadero['extras'] ?? []),
+            $user['email']
+        ]);
+        echo json_encode(['ok' => true]);
+        break;
+
+    case 'guardar_ganaderos_lote':
+        $ganaderos = $input['ganaderos'] ?? [];
+        if (empty($ganaderos)) {
+            echo json_encode(['error' => 'Lista vacía']);
+            exit;
+        }
+        $stmt = $pdo->prepare("INSERT INTO ganaderos_sync (ganadero_id, idGanadero, zonas, nombre, direccion, telefono, email, observaciones, extras, usuario_email)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                               ON DUPLICATE KEY UPDATE idGanadero=VALUES(idGanadero), zonas=VALUES(zonas), nombre=VALUES(nombre),
+                               direccion=VALUES(direccion), telefono=VALUES(telefono), email=VALUES(email),
+                               observaciones=VALUES(observaciones), extras=VALUES(extras), fecha_sync=NOW()");
+        $saved = 0;
+        foreach ($ganaderos as $g) {
+            $stmt->execute([
+                $g['id'],
+                $g['idGanadero'] ?? '',
+                $g['zonas'] ?? '',
+                $g['nombre'] ?? '',
+                $g['direccion'] ?? '',
+                $g['telefono'] ?? '',
+                $g['email'] ?? '',
+                $g['observaciones'] ?? '',
+                json_encode($g['extras'] ?? []),
+                $user['email']
+            ]);
+            $saved++;
+        }
+        echo json_encode(['ok' => true, 'guardados' => $saved]);
+        break;
+
+    case 'listar_ganaderos':
+        if ($user['rol'] === 'admin') {
+            $stmt = $pdo->query("SELECT * FROM ganaderos_sync ORDER BY idGanadero ASC");
+        } else {
+            $stmt = $pdo->prepare("SELECT * FROM ganaderos_sync WHERE usuario_email = ? ORDER BY idGanadero ASC");
+            $stmt->execute([$user['email']]);
+        }
+        $ganaderos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($ganaderos as &$g) {
+            $g['extras'] = json_decode($g['extras'], true) ?: [];
+        }
+        echo json_encode(['ok' => true, 'ganaderos' => $ganaderos]);
+        break;
+
+    case 'eliminar_ganadero':
+        $ganaderoId = intval($input['ganadero_id'] ?? 0);
+        if (!$ganaderoId) {
+            echo json_encode(['error' => 'ID de ganadero requerido']);
+            exit;
+        }
+        if ($user['rol'] === 'admin') {
+            $pdo->prepare("DELETE FROM ganaderos_sync WHERE ganadero_id = ?")->execute([$ganaderoId]);
+        } else {
+            $pdo->prepare("DELETE FROM ganaderos_sync WHERE ganadero_id = ? AND usuario_email = ?")->execute([$ganaderoId, $user['email']]);
+        }
+        echo json_encode(['ok' => true]);
+        break;
+
+    // --- Campos personalizados ---
+    case 'guardar_campos':
+        $tipo = trim($input['tipo'] ?? '');
+        $campos = $input['campos'] ?? [];
+        if (!in_array($tipo, ['ganadero', 'infra'])) {
+            echo json_encode(['error' => 'Tipo inválido']);
+            exit;
+        }
+        $stmt = $pdo->prepare("INSERT INTO campos_extra_sync (tipo, campos, usuario_email)
+                               VALUES (?, ?, ?)
+                               ON DUPLICATE KEY UPDATE campos=VALUES(campos), fecha_sync=NOW()");
+        $stmt->execute([$tipo, json_encode($campos), $user['email']]);
+        echo json_encode(['ok' => true]);
+        break;
+
+    case 'listar_campos':
+        // Campos: el admin ve los suyos (son compartidos para todos)
+        $stmt = $pdo->prepare("SELECT tipo, campos FROM campos_extra_sync WHERE usuario_email = ?");
+        $stmt->execute([$user['email']]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $result = ['ganadero' => [], 'infra' => []];
+        foreach ($rows as $row) {
+            $result[$row['tipo']] = json_decode($row['campos'], true) ?: [];
+        }
+        // Si el usuario no tiene campos propios, buscar los del admin
+        if (empty($result['ganadero']) || empty($result['infra'])) {
+            $stmtAdmin = $pdo->query("SELECT tipo, campos FROM campos_extra_sync WHERE usuario_email IN (SELECT email FROM usuarios WHERE rol = 'admin') LIMIT 2");
+            $adminRows = $stmtAdmin->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($adminRows as $row) {
+                if (empty($result[$row['tipo']])) {
+                    $result[$row['tipo']] = json_decode($row['campos'], true) ?: [];
+                }
+            }
+        }
+        echo json_encode(['ok' => true, 'campos' => $result]);
         break;
 
     default:

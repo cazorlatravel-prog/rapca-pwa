@@ -1802,11 +1802,16 @@ function sincronizarDesdeServidor(){
   if(!sesionActual||!sesionActual.token||!isOnline)return;
   console.log('Iniciando sincronización desde servidor...');
   sincronizarUsuariosDesdeServidor();
+  // Descargar datos del servidor → local
   sincronizarRegistrosDesdeServidor();
   sincronizarInfrasDesdeServidor();
-  // También subir registros locales no sincronizados
+  sincronizarGanaderosDesdeServidor();
+  sincronizarCamposDesdeServidor();
+  // Subir datos locales → servidor
   sincronizarRegistrosAlServidor();
   sincronizarInfrasAlServidor();
+  sincronizarGanaderosAlServidor();
+  sincronizarCamposAlServidor();
 }
 
 // --- Cargar registros del servidor y mezclar con locales ---
@@ -1896,6 +1901,91 @@ function sincronizarInfrasAlServidor(){
   .then(function(r){return r.json();})
   .then(function(d){if(d.ok)console.log('Infraestructuras subidas al servidor: '+d.guardadas);})
   .catch(function(){});
+}
+
+// --- Sincronizar ganadero individual al servidor ---
+function sincronizarGanaderoServidor(ganadero){
+  if(!sesionActual||!sesionActual.token||!isOnline)return;
+  fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'guardar_ganadero',token:sesionActual.token,ganadero:ganadero})}).catch(function(){});
+}
+
+// --- Subir todos los ganaderos locales al servidor ---
+function sincronizarGanaderosAlServidor(){
+  if(!sesionActual||!sesionActual.token||!isOnline)return;
+  var locales=getGanaderos();
+  if(locales.length===0)return;
+  fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'guardar_ganaderos_lote',token:sesionActual.token,ganaderos:locales})})
+  .then(function(r){return r.json();})
+  .then(function(d){if(d.ok)console.log('Ganaderos subidos al servidor: '+d.guardados);})
+  .catch(function(){});
+}
+
+// --- Cargar ganaderos del servidor y mezclar con locales ---
+function sincronizarGanaderosDesdeServidor(){
+  if(!sesionActual||!sesionActual.token||!isOnline)return;
+  fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'listar_ganaderos',token:sesionActual.token})})
+  .then(function(r){return r.json();})
+  .then(function(data){
+    if(!data.ok||!data.ganaderos)return;
+    var locales=getGanaderos();
+    var idsLocales={};
+    locales.forEach(function(g){idsLocales[g.id]=true;});
+    var nuevos=0;
+    data.ganaderos.forEach(function(sg){
+      var gId=parseInt(sg.ganadero_id)||sg.ganadero_id;
+      if(!idsLocales[gId]){
+        locales.push({id:gId,idGanadero:sg.idGanadero||'',zonas:sg.zonas||'',nombre:sg.nombre||'',direccion:sg.direccion||'',telefono:sg.telefono||'',email:sg.email||'',observaciones:sg.observaciones||'',extras:sg.extras||{}});
+        nuevos++;
+      }
+    });
+    if(nuevos>0){
+      guardarGanaderos(locales);
+      showToast('Recuperados '+nuevos+' ganaderos del servidor','success');
+      console.log('Sincronización: '+nuevos+' ganaderos nuevos del servidor');
+    }else{
+      console.log('Sincronización: ganaderos al día');
+    }
+  })
+  .catch(function(e){console.error('Error sincronizando ganaderos:',e);});
+}
+
+// --- Sincronizar campos personalizados al servidor ---
+function sincronizarCamposAlServidor(){
+  if(!sesionActual||!sesionActual.token||!isOnline)return;
+  if(camposExtraGan.length>0){
+    fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'guardar_campos',token:sesionActual.token,tipo:'ganadero',campos:camposExtraGan})}).catch(function(){});
+  }
+  if(camposExtraInf.length>0){
+    fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'guardar_campos',token:sesionActual.token,tipo:'infra',campos:camposExtraInf})}).catch(function(){});
+  }
+}
+
+// --- Cargar campos personalizados del servidor ---
+function sincronizarCamposDesdeServidor(){
+  if(!sesionActual||!sesionActual.token||!isOnline)return;
+  fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'listar_campos',token:sesionActual.token})})
+  .then(function(r){return r.json();})
+  .then(function(data){
+    if(!data.ok||!data.campos)return;
+    var cambios=false;
+    // Campos de ganadero: mezclar (unión de local + servidor)
+    if(data.campos.ganadero&&data.campos.ganadero.length>0){
+      data.campos.ganadero.forEach(function(c){
+        if(camposExtraGan.indexOf(c)===-1){camposExtraGan.push(c);cambios=true;}
+      });
+      if(cambios){localStorage.setItem('rapca_campos_ganadero',JSON.stringify(camposExtraGan));renderCamposExtraGan();}
+    }
+    // Campos de infra: mezclar
+    var cambiosInf=false;
+    if(data.campos.infra&&data.campos.infra.length>0){
+      data.campos.infra.forEach(function(c){
+        if(camposExtraInf.indexOf(c)===-1){camposExtraInf.push(c);cambiosInf=true;}
+      });
+      if(cambiosInf){localStorage.setItem('rapca_campos_infra',JSON.stringify(camposExtraInf));renderCamposExtraInf();}
+    }
+    if(cambios||cambiosInf)console.log('Campos personalizados sincronizados del servidor');
+  })
+  .catch(function(e){console.error('Error sincronizando campos:',e);});
 }
 
 // --- Sincronizar usuarios desde servidor (admin) ---
@@ -2158,6 +2248,7 @@ function guardarGanadero(){
   if(editandoGanaderoId){for(var i=0;i<lista.length;i++)if(lista[i].id===editandoGanaderoId){lista[i]=r;break;}editandoGanaderoId=null;}
   else{lista.push(r);}
   guardarGanaderos(lista);showToast('Ganadero guardado','success');limpiarFormGanadero();cargarListaGanaderos();
+  sincronizarGanaderoServidor(r);
 }
 function limpiarFormGanadero(){
   editandoGanaderoId=null;
@@ -2200,17 +2291,22 @@ function eliminarGanadero(id){
   if(!confirm('¿Eliminar ganadero?'))return;
   guardarGanaderos(getGanaderos().filter(function(r){return r.id!==id;}));
   cargarListaGanaderos();showToast('Eliminado','info');
+  if(sesionActual&&sesionActual.token&&isOnline){
+    fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'eliminar_ganadero',token:sesionActual.token,ganadero_id:id})}).catch(function(){});
+  }
 }
 function agregarCampoGanadero(){
   var nombre=prompt('Nombre del nuevo campo:');
   if(!nombre||!nombre.trim())return;nombre=nombre.trim();
   if(camposExtraGan.indexOf(nombre)!==-1){showToast('Campo ya existe','error');return;}
   camposExtraGan.push(nombre);localStorage.setItem('rapca_campos_ganadero',JSON.stringify(camposExtraGan));renderCamposExtraGan();
+  sincronizarCamposAlServidor();
 }
 function eliminarCampoGan(nombre){
   if(!confirm('¿Eliminar campo "'+nombre+'"?'))return;
   camposExtraGan=camposExtraGan.filter(function(c){return c!==nombre;});
   localStorage.setItem('rapca_campos_ganadero',JSON.stringify(camposExtraGan));renderCamposExtraGan();
+  sincronizarCamposAlServidor();
 }
 function renderCamposExtraGan(){
   var el=document.getElementById('gan-campos-extra');if(!el)return;
@@ -2297,11 +2393,13 @@ function agregarCampoInfra(){
   if(!nombre||!nombre.trim())return;nombre=nombre.trim();
   if(camposExtraInf.indexOf(nombre)!==-1){showToast('Campo ya existe','error');return;}
   camposExtraInf.push(nombre);localStorage.setItem('rapca_campos_infra',JSON.stringify(camposExtraInf));renderCamposExtraInf();
+  sincronizarCamposAlServidor();
 }
 function eliminarCampoInf(nombre){
   if(!confirm('¿Eliminar campo "'+nombre+'"?'))return;
   camposExtraInf=camposExtraInf.filter(function(c){return c!==nombre;});
   localStorage.setItem('rapca_campos_infra',JSON.stringify(camposExtraInf));renderCamposExtraInf();
+  sincronizarCamposAlServidor();
 }
 function renderCamposExtraInf(){
   var el=document.getElementById('inf-campos-extra');if(!el)return;
@@ -2347,7 +2445,7 @@ function importarExcel(file){
       localStorage.setItem('rapca_campos_infra',JSON.stringify(camposExtraInf));
       renderCamposExtraInf();cargarListaInfra();showLoading(false);
       showToast(nuevos+' nuevas, '+actualizados+' actualizadas','success');
-      sincronizarInfrasAlServidor();
+      sincronizarInfrasAlServidor();sincronizarCamposAlServidor();
     }catch(err){showLoading(false);showToast('Error: '+err.message,'error');console.error('Error importando Excel:',err);}
   };
   reader.readAsArrayBuffer(file);
