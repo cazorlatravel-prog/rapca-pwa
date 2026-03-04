@@ -1435,6 +1435,56 @@ function buscarEnMapa(query,resultsId){
   container.classList.add('show');
 }
 
+function buscarUnidadEnMapa(query,resultsId){
+  var container=document.getElementById(resultsId);
+  if(!container)return;
+  if(!query||query.length<1){container.classList.remove('show');container.innerHTML='';return;}
+  query=query.toLowerCase().trim();
+  var resultados=[];
+  // Buscar en capas KML por id_unidad
+  Object.keys(capasKMLSubcapas).forEach(function(nombreCapa){
+    var subcapas=capasKMLSubcapas[nombreCapa]||[];
+    subcapas.forEach(function(sc,idx){
+      if(!sc.lat||!sc.lon)return;
+      var idU=obtenerIdUnidadDesdeExtData(sc)||sc.nombre||'';
+      if(idU.toLowerCase().indexOf(query)!==-1){
+        resultados.push({tipo:'kml',label:idU,sub:nombreCapa,lat:sc.lat,lon:sc.lon,color:'#e67e22',icon:'KML'});
+      }
+    });
+  });
+  // Buscar en infraestructuras por idUnidad
+  var infras=getInfras();
+  infras.forEach(function(inf){
+    if(!inf.lat||!inf.lon)return;
+    var idU=(inf.idUnidad||'').toLowerCase();
+    if(idU.indexOf(query)!==-1){
+      resultados.push({tipo:'infra',label:inf.idUnidad||'--',sub:inf.nombre||inf.municipio||'Infraestructura',lat:parseFloat(inf.lat),lon:parseFloat(inf.lon),color:'#8e44ad',icon:'INF'});
+    }
+  });
+  // Buscar en registros por unidad
+  var rs=getRegistrosUsuario();
+  rs.forEach(function(r){
+    if(!r.lat||!r.lon)return;
+    var unidad=(r.unidad||'').toLowerCase();
+    if(unidad.indexOf(query)!==-1){
+      var color=r.tipo==='VP'?'#88d8b0':r.tipo==='EL'?'#2ecc71':'#fd9853';
+      resultados.push({tipo:'reg',label:r.tipo+' '+r.unidad,sub:r.fecha+(r.operador_nombre?' | '+r.operador_nombre:''),lat:r.lat,lon:r.lon,color:color,icon:r.tipo});
+    }
+  });
+  // Limitar a 20 resultados
+  resultados=resultados.slice(0,20);
+  if(resultados.length===0){container.classList.remove('show');container.innerHTML='';return;}
+  var html='';
+  resultados.forEach(function(r){
+    html+='<div class="mapa-search-result" onclick="irAPuntoMapa('+r.lat+','+r.lon+',\''+resultsId+'\')">';
+    html+='<div class="sr-icon" style="background:'+r.color+'">'+r.icon+'</div>';
+    html+='<div class="sr-info"><div class="sr-title">'+r.label+'</div><div class="sr-sub">'+r.sub+'</div></div>';
+    html+='</div>';
+  });
+  container.innerHTML=html;
+  container.classList.add('show');
+}
+
 function irAPuntoMapa(lat,lon,resultsId){
   if(!mapaLeaflet)initMapa();
   mapaLeaflet.setView([lat,lon],17);

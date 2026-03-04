@@ -226,6 +226,12 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .mapa-search-bar{position:relative;margin-top:8px}
 .mapa-search-bar .mapa-search-input{box-shadow:none;border-color:#ddd}
 .mapa-search-bar .mapa-search-results{position:absolute;left:0;right:0;z-index:100}
+/* Toolbar grid del mapa */
+.mapa-toolbar-grid{margin-bottom:10px}
+.mapa-toolbar-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+.mapa-tool-btn{display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:8px 12px;border:none;border-radius:8px;color:#fff;font-size:.8rem;font-weight:600;cursor:pointer;min-height:38px;white-space:nowrap;flex:1;min-width:0;text-align:center}
+.mapa-tool-btn:active{opacity:.8;transform:scale(.97)}
+.mapa-tool-btn input[type="file"]{display:none}
 .sync-progress{position:fixed;bottom:60px;left:10px;right:10px;background:#fff;border-radius:12px;padding:14px;box-shadow:0 4px 20px rgba(0,0,0,.25);z-index:900;display:none}
 .sync-progress.show{display:block}
 .progress-track{background:#e0e0e0;border-radius:5px;height:8px;overflow:hidden;margin-top:8px}
@@ -609,15 +615,20 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 
 <div id="page-mapa" class="page">
 <div class="card" style="margin-bottom:10px">
-<h3 style="margin-bottom:10px;color:#1a3d2e">🗺️ Mapa de Visitas</h3>
-<div style="display:flex;gap:8px;flex-wrap:wrap">
-<label class="btn-camera admin-only" style="background:#3498db;color:#fff;margin:0;cursor:pointer;font-size:.85rem">📂 Cargar KML/KMZ<input type="file" id="kml-input" accept=".kml,.kmz" style="display:none" onchange="cargarArchivoMapa(this.files[0]);this.value=''"></label>
-<button class="btn-camera" style="background:#e67e22;margin:0;font-size:.85rem" onclick="exportarKML()">📤 Exportar KML</button>
-<button class="btn-camera admin-only" style="background:#e74c3c;margin:0;font-size:.85rem" onclick="limpiarCapasMapa()">🗑️ Limpiar</button>
-<button class="btn-camera" style="background:#27ae60;margin:0;font-size:.85rem" onclick="centrarEnMiPosicion()">📍 Mi posición</button>
-<button class="btn-camera" style="background:#1a3d2e;margin:0;font-size:.85rem" onclick="toggleMapaFullscreen()">⛶ Pantalla completa</button>
-<button class="btn-camera" style="background:#9b59b6;margin:0;font-size:.85rem" onclick="abrirExportarMapaPDF()">📄 PDF Unidad</button>
-<button class="btn-camera" style="background:#8e44ad;margin:0;font-size:.85rem" onclick="toggleWMSPanel()">🗺️ Capas WMS</button>
+<h3 style="margin-bottom:10px;color:#1a3d2e">🗺️ Mapa</h3>
+<div class="mapa-toolbar-grid">
+<div class="mapa-toolbar-row">
+<label class="mapa-tool-btn" style="background:#3498db">📂 KML/KMZ<input type="file" id="kml-input" accept=".kml,.kmz" style="display:none" onchange="cargarArchivoMapa(this.files[0]);this.value=''"></label>
+<label class="mapa-tool-btn" style="background:#2ecc71">📥 GPX<input type="file" accept=".gpx" style="display:none" onchange="importarGPX(this.files[0]);this.value=''"></label>
+<button class="mapa-tool-btn" style="background:#e67e22" onclick="exportarKML()">📤 KML</button>
+<button class="mapa-tool-btn" style="background:#e67e22" onclick="exportarGPX()">📤 GPX</button>
+</div>
+<div class="mapa-toolbar-row">
+<button class="mapa-tool-btn" style="background:#27ae60" onclick="centrarEnMiPosicion()">📍 Mi posición</button>
+<button class="mapa-tool-btn" style="background:#1a3d2e" onclick="toggleMapaFullscreen()">⛶ Completa</button>
+<button class="mapa-tool-btn" style="background:#9b59b6" onclick="abrirExportarMapaPDF()">📄 Plano A4</button>
+<button class="mapa-tool-btn admin-only" style="background:#e74c3c" onclick="limpiarCapasMapa()">🗑️</button>
+</div>
 </div>
 <!-- Panel WMS/WMTS -->
 <div class="wms-panel" id="wms-panel">
@@ -629,8 +640,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <div class="gps-tools-bar">
 <button class="btn-measure" id="btnMeasure" onclick="toggleMedicion()">📏 Medir</button>
 <button class="btn-waypoint" onclick="crearWaypoint()">📌 Waypoint</button>
-<button class="btn-gpx" onclick="exportarGPX()">📤 GPX</button>
-<label class="btn-gpx" style="cursor:pointer;margin:0">📥 GPX<input type="file" accept=".gpx" style="display:none" onchange="importarGPX(this.files[0]);this.value=''"></label>
+<button style="background:#8e44ad;color:#fff" onclick="toggleWMSPanel()">🗺️ WMS</button>
 <button style="background:#1abc9c;color:#fff" onclick="toggleGPSInfo()">📡 GPS</button>
 </div>
 <!-- GPS Info Panel -->
@@ -668,7 +678,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <input type="date" id="mapa-filtro-desde" onchange="actualizarMarcadoresMapa()" style="min-width:110px" placeholder="Desde">
 </div>
 <div class="mapa-search-bar">
-<input type="text" class="mapa-search-input" id="mapa-search-normal" placeholder="Buscar unidad, waypoint..." oninput="buscarEnMapa(this.value,'mapa-search-results-normal')" onfocus="if(this.value)buscarEnMapa(this.value,'mapa-search-results-normal')">
+<input type="text" class="mapa-search-input" id="mapa-search-normal" placeholder="Buscar por ID Unidad (ej: 23AJE01)..." oninput="buscarUnidadEnMapa(this.value,'mapa-search-results-normal')" onfocus="if(this.value)buscarUnidadEnMapa(this.value,'mapa-search-results-normal')">
 <button class="mapa-search-clear" onclick="document.getElementById('mapa-search-normal').value='';document.getElementById('mapa-search-results-normal').classList.remove('show')">✕</button>
 <div class="mapa-search-results" id="mapa-search-results-normal"></div>
 </div>
@@ -686,7 +696,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <!-- Buscador flotante para fullscreen -->
 <div class="mapa-search-float" id="mapa-search-float">
 <div style="position:relative">
-<input type="text" class="mapa-search-input" id="mapa-search-fs" placeholder="Buscar unidad, waypoint..." oninput="buscarEnMapa(this.value,'mapa-search-results-fs')" onfocus="if(this.value)buscarEnMapa(this.value,'mapa-search-results-fs')">
+<input type="text" class="mapa-search-input" id="mapa-search-fs" placeholder="Buscar por ID Unidad (ej: 23AJE01)..." oninput="buscarUnidadEnMapa(this.value,'mapa-search-results-fs')" onfocus="if(this.value)buscarUnidadEnMapa(this.value,'mapa-search-results-fs')">
 <button class="mapa-search-clear" onclick="document.getElementById('mapa-search-fs').value='';document.getElementById('mapa-search-results-fs').classList.remove('show');document.getElementById('mapa-search-float').style.display='none'">✕</button>
 <div class="mapa-search-results" id="mapa-search-results-fs"></div>
 </div>
