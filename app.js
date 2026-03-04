@@ -1444,31 +1444,30 @@ function buscarUnidadEnMapa(query,resultsId){
   // Buscar en capas KML por id_unidad
   Object.keys(capasKMLSubcapas).forEach(function(nombreCapa){
     var subcapas=capasKMLSubcapas[nombreCapa]||[];
+    var nombreEsc=nombreCapa.replace(/'/g,"\\'");
     subcapas.forEach(function(sc,idx){
-      if(!sc.lat||!sc.lon)return;
       var idU=obtenerIdUnidadDesdeExtData(sc)||sc.nombre||'';
       if(idU.toLowerCase().indexOf(query)!==-1){
-        resultados.push({tipo:'kml',label:idU,sub:nombreCapa,lat:sc.lat,lon:sc.lon,color:'#e67e22',icon:'KML'});
+        resultados.push({tipo:'kml',label:idU,sub:nombreCapa,color:'#e67e22',icon:'KML',capa:nombreEsc,idx:idx});
       }
     });
   });
   // Buscar en infraestructuras por idUnidad
   var infras=getInfras();
   infras.forEach(function(inf){
-    if(!inf.lat||!inf.lon)return;
     var idU=(inf.idUnidad||'').toLowerCase();
     if(idU.indexOf(query)!==-1){
-      resultados.push({tipo:'infra',label:inf.idUnidad||'--',sub:inf.nombre||inf.municipio||'Infraestructura',lat:parseFloat(inf.lat),lon:parseFloat(inf.lon),color:'#8e44ad',icon:'INF'});
+      var lat=parseFloat(inf.lat)||0,lon=parseFloat(inf.lon)||0;
+      resultados.push({tipo:'infra',label:inf.idUnidad||'--',sub:inf.nombre||inf.municipio||'Infraestructura',color:'#8e44ad',icon:'INF',lat:lat,lon:lon});
     }
   });
   // Buscar en registros por unidad
   var rs=getRegistrosUsuario();
   rs.forEach(function(r){
-    if(!r.lat||!r.lon)return;
     var unidad=(r.unidad||'').toLowerCase();
     if(unidad.indexOf(query)!==-1){
       var color=r.tipo==='VP'?'#88d8b0':r.tipo==='EL'?'#2ecc71':'#fd9853';
-      resultados.push({tipo:'reg',label:r.tipo+' '+r.unidad,sub:r.fecha+(r.operador_nombre?' | '+r.operador_nombre:''),lat:r.lat,lon:r.lon,color:color,icon:r.tipo});
+      resultados.push({tipo:'reg',label:r.tipo+' '+r.unidad,sub:r.fecha+(r.operador_nombre?' | '+r.operador_nombre:''),color:color,icon:r.tipo,lat:r.lat,lon:r.lon});
     }
   });
   // Limitar a 20 resultados
@@ -1476,7 +1475,13 @@ function buscarUnidadEnMapa(query,resultsId){
   if(resultados.length===0){container.classList.remove('show');container.innerHTML='';return;}
   var html='';
   resultados.forEach(function(r){
-    html+='<div class="mapa-search-result" onclick="irAPuntoMapa('+r.lat+','+r.lon+',\''+resultsId+'\')">';
+    var onclick='';
+    if(r.tipo==='kml'){
+      onclick='zoomASubcapa(\''+r.capa+'\','+r.idx+');var c=document.getElementById(\''+resultsId+'\');if(c)c.classList.remove(\'show\')';
+    }else{
+      onclick='irAPuntoMapa('+r.lat+','+r.lon+',\''+resultsId+'\')';
+    }
+    html+='<div class="mapa-search-result" onclick="'+onclick+'">';
     html+='<div class="sr-icon" style="background:'+r.color+'">'+r.icon+'</div>';
     html+='<div class="sr-info"><div class="sr-title">'+r.label+'</div><div class="sr-sub">'+r.sub+'</div></div>';
     html+='</div>';
@@ -3225,7 +3230,9 @@ function renderTablaAtributos(){
   }
   // Renderizar cabecera
   var iconos={punto:'📍',linea:'〰️',poligono:'⬡'};
+  var nombreCapaEsc=attrTableCapaActual.replace(/'/g,"\\'");
   var h='<tr>';
+  h+='<th style="width:50px;text-align:center">Ir</th>';
   attrTableColumnas.forEach(function(col){
     var cls='';
     if(attrTableOrden.col===col)cls=attrTableOrden.asc?' sorted-asc':' sorted-desc';
@@ -3237,6 +3244,7 @@ function renderTablaAtributos(){
   h='';
   datos.forEach(function(fila){
     h+='<tr onclick="seleccionarFilaAtributos('+fila._idx+')" data-idx="'+fila._idx+'">';
+    h+='<td style="text-align:center"><button class="btn-zoom" style="font-size:.7rem;padding:2px 6px" onclick="event.stopPropagation();irASubcapaDesdeAttr(\''+nombreCapaEsc+'\','+fila._idx+')" title="Ver en mapa">📍 Ir</button></td>';
     attrTableColumnas.forEach(function(col){
       var v=fila[col]||'';
       if(col==='Tipo')h+='<td class="attr-tipo-cell">'+(iconos[v]||v)+'</td>';
@@ -3255,6 +3263,27 @@ function ordenarTablaAtributos(col){
   if(attrTableOrden.col===col)attrTableOrden.asc=!attrTableOrden.asc;
   else{attrTableOrden.col=col;attrTableOrden.asc=true;}
   renderTablaAtributos();
+}
+
+function irASubcapaDesdeAttr(nombreCapa,idx){
+  // Cerrar tabla de atributos y hacer zoom al elemento en el mapa
+  cerrarTablaAtributos();
+  var subcapas=capasKMLSubcapas[nombreCapa];
+  if(!subcapas||!subcapas[idx])return;
+  var sc=subcapas[idx];
+  if(!sc.layer)return;
+  if(sc.layer.getLatLng){
+    mapaLeaflet.setView(sc.layer.getLatLng(),17);
+    sc.layer.openPopup();
+  }else if(sc.layer.getBounds){
+    try{mapaLeaflet.fitBounds(sc.layer.getBounds(),{padding:[30,30]});sc.layer.openPopup();}catch(e){}
+  }
+  // Flash visual
+  var lat=sc.lat,lon=sc.lon;
+  if(lat&&lon){
+    var flash=L.circleMarker([lat,lon],{radius:25,color:'#e74c3c',fillColor:'#e74c3c',fillOpacity:0.3,weight:3}).addTo(mapaLeaflet);
+    setTimeout(function(){mapaLeaflet.removeLayer(flash);},2500);
+  }
 }
 
 function seleccionarFilaAtributos(idx){

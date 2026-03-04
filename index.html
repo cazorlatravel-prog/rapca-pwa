@@ -675,7 +675,6 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <div class="map-filters">
 <select id="mapa-filtro-tipo" onchange="actualizarMarcadoresMapa()"><option value="">Tipo</option><option value="VP">VP</option><option value="EL">EL</option><option value="EI">EI</option><option value="infra">Infra</option></select>
 <select id="mapa-filtro-operador" onchange="actualizarMarcadoresMapa()" class="admin-only"><option value="">Operador</option></select>
-<input type="date" id="mapa-filtro-desde" onchange="actualizarMarcadoresMapa()" style="min-width:110px" placeholder="Desde">
 </div>
 <div class="mapa-search-bar">
 <input type="text" class="mapa-search-input" id="mapa-search-normal" placeholder="Buscar por ID Unidad (ej: 23AJE01)..." oninput="buscarUnidadEnMapa(this.value,'mapa-search-results-normal')" onfocus="if(this.value)buscarUnidadEnMapa(this.value,'mapa-search-results-normal')">
