@@ -548,7 +548,6 @@ function parsearKML(kmlText){
         var opts={color:estilo.lineColor||'#3388ff',weight:estilo.lineWidth||4,opacity:0.85};
         var pl=L.polyline(latlngs,opts);
         if(popup)pl.bindPopup(popup);
-        if(nombre)pl.bindTooltip(nombre,{permanent:true,direction:'center',className:'kml-shape-tooltip'});
         subLayer=pl;tipoGeo='linea';
       }
     }
@@ -561,7 +560,6 @@ function parsearKML(kmlText){
         var opts={color:estilo.lineColor||'#3388ff',weight:4,fillColor:estilo.fillColor||'#3388ff',fillOpacity:0.25,opacity:0.85};
         var pg=L.polygon(latlngs,opts);
         if(popup)pg.bindPopup(popup);
-        if(nombre)pg.bindTooltip(nombre,{permanent:true,direction:'center',className:'kml-shape-tooltip'});
         subLayer=pg;tipoGeo='poligono';
       }
     }
@@ -621,7 +619,8 @@ function actualizarListaCapas(){
     html+='<div class="capas-actions">';
     html+='<button style="background:#3498db;font-size:.7rem;padding:3px 8px" onclick="zoomACapa(\''+nombreEsc+'\')" title="Zoom a toda la capa">🔍</button>';
     html+='<button style="background:#e67e22;font-size:.7rem;padding:3px 8px" onclick="abrirTablaAtributos(\''+nombreEsc+'\')" title="Tabla de atributos">📊</button>';
-    html+='<button style="background:'+(labelsActivas?'#27ae60':'#95a5a6')+';font-size:.7rem;padding:3px 8px" onclick="toggleEtiquetasCapa(\''+nombreEsc+'\')" title="Etiquetas ID Unidad">🏷️</button>';
+    var labelTitle=labelsActivas?(capasKMLCampoLabel[nombre]||'').replace('_nombre','Nombre'):'Etiquetas';
+    html+='<button style="background:'+(labelsActivas?'#27ae60':'#95a5a6')+';font-size:.7rem;padding:3px 8px" onclick="toggleEtiquetasCapa(\''+nombreEsc+'\')" title="'+(labelsActivas?'Etiquetas: '+labelTitle+' (pulsa para quitar)':'Mostrar etiquetas')+'">🏷️'+(labelsActivas?' '+labelTitle:'')+'</button>';
     if(esAdmin){
       html+='<button class="btn-asignar" onclick="abrirModalCapasPerm(\''+nombreEsc+'\')" title="Asignar usuarios">👥</button>';
       html+='<button onclick="eliminarCapaMapa(\''+nombreEsc+'\')" title="Eliminar capa">✖</button>';
@@ -767,17 +766,81 @@ function obtenerIdUnidadDesdeExtData(sc){
   return '';
 }
 
+var capasKMLCampoLabel={}; // Guardar qué campo se usa como etiqueta por capa
+
 function toggleEtiquetasCapa(nombre){
   if(!mapaLeaflet)return;
+  // Si ya hay etiquetas, quitarlas
   if(capasKMLLabels[nombre]){
     capasKMLLabels[nombre].forEach(function(lbl){mapaLeaflet.removeLayer(lbl);});
     delete capasKMLLabels[nombre];
+    delete capasKMLCampoLabel[nombre];
     actualizarListaCapas();
     return;
   }
-  var infras=getInfras();
+  // Recopilar campos disponibles en extData de la capa
+  var subcapas=capasKMLSubcapas[nombre]||[];
+  var camposSet={};
+  subcapas.forEach(function(sc){
+    if(sc.extData){
+      Object.keys(sc.extData).forEach(function(k){
+        // Solo mostrar campos que tengan algún valor no vacío
+        if(String(sc.extData[k]).trim())camposSet[k]=true;
+      });
+    }
+  });
+  var campos=Object.keys(camposSet);
+  // Si hay campos, mostrar selector; si no, usar nombre del placemark
+  if(campos.length>0){
+    mostrarSelectorCampoEtiqueta(nombre,campos);
+  }else{
+    aplicarEtiquetasCapa(nombre,'_nombre');
+  }
+}
+
+function mostrarSelectorCampoEtiqueta(nombre,campos){
+  // Crear overlay con selector de campo
+  var overlay=document.getElementById('label-field-overlay');
+  if(!overlay){
+    overlay=document.createElement('div');
+    overlay.id='label-field-overlay';
+    overlay.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center';
+    overlay.innerHTML='<div style="background:#fff;border-radius:10px;padding:20px;max-width:340px;width:90%;max-height:70vh;overflow-y:auto;box-shadow:0 4px 20px rgba(0,0,0,.3)"><div style="font-weight:bold;font-size:1.1rem;color:#1a3d2e;margin-bottom:12px">🏷️ Elegir campo para etiquetas</div><div id="label-field-list"></div><div style="margin-top:12px;display:flex;gap:8px"><button id="label-field-cancel" style="flex:1;padding:10px;border:1px solid #ccc;border-radius:6px;background:#f5f5f5;cursor:pointer">Cancelar</button></div></div>';
+    document.body.appendChild(overlay);
+  }
+  var list=document.getElementById('label-field-list');
+  var h='';
+  // Opción "Nombre del elemento" (el <name> del KML)
+  h+='<button class="label-field-btn" data-field="_nombre" style="display:block;width:100%;text-align:left;padding:10px 14px;margin-bottom:6px;border:1px solid #ddd;border-radius:6px;background:#f9f9f9;cursor:pointer;font-size:.9rem"><strong>Nombre del elemento</strong><br><span style="color:#888;font-size:.8rem">(campo &lt;name&gt; del KML)</span></button>';
+  // Campos de ExtendedData
+  campos.forEach(function(campo){
+    // Mostrar ejemplo del primer valor
+    var ejemplo='';
+    var subcapas=capasKMLSubcapas[nombre]||[];
+    for(var i=0;i<subcapas.length&&!ejemplo;i++){
+      if(subcapas[i].extData&&subcapas[i].extData[campo])ejemplo=String(subcapas[i].extData[campo]).substring(0,40);
+    }
+    h+='<button class="label-field-btn" data-field="'+campo.replace(/"/g,'&quot;')+'" style="display:block;width:100%;text-align:left;padding:10px 14px;margin-bottom:6px;border:1px solid #ddd;border-radius:6px;background:#f9f9f9;cursor:pointer;font-size:.9rem"><strong>'+campo+'</strong>'+(ejemplo?'<br><span style="color:#888;font-size:.8rem">ej: '+ejemplo+'</span>':'')+'</button>';
+  });
+  list.innerHTML=h;
+  overlay.style.display='flex';
+  // Event listeners
+  var btns=list.querySelectorAll('.label-field-btn');
+  for(var i=0;i<btns.length;i++){
+    btns[i].onclick=function(){
+      var field=this.getAttribute('data-field');
+      overlay.style.display='none';
+      aplicarEtiquetasCapa(nombre,field);
+    };
+  }
+  document.getElementById('label-field-cancel').onclick=function(){overlay.style.display='none';};
+  overlay.onclick=function(e){if(e.target===overlay)overlay.style.display='none';};
+}
+
+function aplicarEtiquetasCapa(nombre,campo){
   var subcapas=capasKMLSubcapas[nombre]||[];
   var labels=[];
+  capasKMLCampoLabel[nombre]=campo;
   subcapas.forEach(function(sc){
     if(!sc.visible)return;
     var lyr=sc.layer;
@@ -785,22 +848,13 @@ function toggleEtiquetasCapa(nombre){
     if(lyr.getLatLng)centro=lyr.getLatLng();
     else if(lyr.getBounds)try{centro=lyr.getBounds().getCenter();}catch(e){}
     if(!centro)return;
-    // 1. Buscar ID_Unidad en extData del KML
-    var idUnidadKML=obtenerIdUnidadDesdeExtData(sc);
-    // 2. Intentar vincular con infraestructura existente
-    var matchInfra=null;
-    var textosBusca=[idUnidadKML,(sc.nombre||'').trim()].filter(function(t){return t.length>0;});
-    for(var t=0;t<textosBusca.length&&!matchInfra;t++){
-      var buscaNorm=textosBusca[t].toUpperCase();
-      for(var i=0;i<infras.length;i++){
-        var idU=(infras[i].idUnidad||'').trim().toUpperCase();
-        if(idU&&(buscaNorm===idU||buscaNorm.indexOf(idU)!==-1||idU.indexOf(buscaNorm)!==-1)){
-          matchInfra=infras[i];break;
-        }
-      }
+    // Obtener texto según el campo seleccionado
+    var textoLabel='';
+    if(campo==='_nombre'){
+      textoLabel=sc.nombre||'';
+    }else{
+      textoLabel=(sc.extData&&sc.extData[campo])?String(sc.extData[campo]).trim():'';
     }
-    // 3. Determinar texto de etiqueta: infraestructura > extData > nombre KML
-    var textoLabel=matchInfra?matchInfra.idUnidad:(idUnidadKML||sc.nombre||'');
     if(!textoLabel)return;
     var label=L.marker(centro,{icon:L.divIcon({className:'kml-label',html:'<span>'+textoLabel+'</span>',iconSize:[0,0],iconAnchor:[0,10]}),interactive:false,zIndexOffset:-100});
     label.addTo(mapaLeaflet);
@@ -809,6 +863,7 @@ function toggleEtiquetasCapa(nombre){
   capasKMLLabels[nombre]=labels;
   actualizarListaCapas();
   if(labels.length===0)showToast('Sin elementos para etiquetar','info');
+  else showToast('Etiquetas: '+campo.replace('_nombre','Nombre')+' ('+labels.length+')','success');
 }
 function eliminarCapaMapa(nombre){
   if(capasKML[nombre]){
@@ -1765,41 +1820,59 @@ function cargarRegistrosServidor(){
   }).catch(function(){});
 }
 // --- Sincronizar registro al servidor ---
+// --- Helper: verificar si tenemos token de servidor válido ---
+function tieneTokenServidor(){
+  return sesionActual&&sesionActual.token&&sesionActual.token.indexOf('local_')!==0;
+}
+
 function sincronizarRegistroServidor(registro){
-  if(!sesionActual||!sesionActual.token||!isOnline)return;
-  fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'guardar',token:sesionActual.token,registro:registro})}).catch(function(){});
+  if(!tieneTokenServidor()||!isOnline)return;
+  fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'guardar',token:sesionActual.token,registro:registro})})
+  .then(function(r){if(!r.ok)console.warn('Error sync registro al servidor: HTTP '+r.status);return r.json();})
+  .then(function(d){if(!d.ok)console.warn('Error sync registro:',d.error);})
+  .catch(function(e){console.warn('Error red sync registro:',e);});
 }
 // --- Sincronizar infraestructura al servidor ---
 function sincronizarInfraServidor(infra){
-  if(!sesionActual||!sesionActual.token||!isOnline)return;
-  fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'guardar_infra',token:sesionActual.token,infra:infra})}).catch(function(){});
+  if(!tieneTokenServidor()||!isOnline)return;
+  fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'guardar_infra',token:sesionActual.token,infra:infra})})
+  .then(function(r){if(!r.ok)console.warn('Error sync infra al servidor: HTTP '+r.status);return r.json();})
+  .then(function(d){if(!d.ok)console.warn('Error sync infra:',d.error);})
+  .catch(function(e){console.warn('Error red sync infra:',e);});
 }
 
 // === SINCRONIZACIÓN BIDIRECCIONAL (servidor ↔ local) ===
-// Se ejecuta tras login exitoso para recuperar datos del servidor
-// --- Sincronizar lista de usuarios del servidor al local (tras login) ---
-function sincronizarUsuariosDesdeServidor(){
-  if(!sesionActual||!sesionActual.token||!isOnline)return;
-  if(sesionActual.rol!=='admin')return;
-  fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'listar_usuarios',token:sesionActual.token})})
-  .then(function(r){return r.json();})
-  .then(function(data){
-    if(!data.ok)return;
-    var localUsers=getUsuariosLocal();
-    var serverUsers=data.usuarios;
-    // Actualizar local con datos del servidor (preservar passwords locales)
-    var merged=serverUsers.map(function(su){
-      var local=localUsers.find(function(l){return l.email.toLowerCase()===su.email.toLowerCase();});
-      return{id:su.id,email:su.email,nombre:su.nombre,rol:su.rol,activo:su.activo,password:local?local.password:''};
-    });
-    guardarUsuariosLocal(merged);
-    console.log('Usuarios sincronizados del servidor: '+serverUsers.length);
-  })
-  .catch(function(e){console.warn('No se pudieron sincronizar usuarios:',e);});
-}
 
 function sincronizarDesdeServidor(){
-  if(!sesionActual||!sesionActual.token||!isOnline)return;
+  if(!sesionActual||!isOnline)return;
+  // Si tenemos token local, intentar re-autenticar con el servidor primero
+  if(!tieneTokenServidor()){
+    console.warn('Token local detectado — intentando obtener token de servidor...');
+    // Buscar credenciales locales del usuario actual
+    var users=getUsuariosLocal();
+    var currentUser=users.find(function(u){return u.email.toLowerCase()===sesionActual.email.toLowerCase();});
+    if(currentUser&&currentUser.password){
+      fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'login',email:sesionActual.email,password:currentUser.password})})
+      .then(function(r){return r.json();})
+      .then(function(data){
+        if(data.ok){
+          sesionActual.token=data.token;
+          sesionActual.id=data.usuario.id;
+          localStorage.setItem('rapca_sesion',JSON.stringify(sesionActual));
+          console.log('Token de servidor obtenido — sincronizando...');
+          ejecutarSincronizacion();
+        }else{
+          console.warn('No se pudo obtener token del servidor: '+(data.error||''));
+        }
+      })
+      .catch(function(e){console.warn('Servidor no disponible para re-auth:',e);});
+    }
+    return;
+  }
+  ejecutarSincronizacion();
+}
+
+function ejecutarSincronizacion(){
   console.log('Iniciando sincronización desde servidor...');
   sincronizarUsuariosDesdeServidor();
   // Descargar datos del servidor → local
@@ -1816,9 +1889,9 @@ function sincronizarDesdeServidor(){
 
 // --- Cargar registros del servidor y mezclar con locales ---
 function sincronizarRegistrosDesdeServidor(){
-  if(!sesionActual||!sesionActual.token||!isOnline)return;
+  if(!tieneTokenServidor()||!isOnline)return;
   fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'listar',token:sesionActual.token})})
-  .then(function(r){return r.json();})
+  .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
   .then(function(data){
     if(!data.ok||!data.registros)return;
     var locales=getRegistros();
@@ -1848,9 +1921,9 @@ function sincronizarRegistrosDesdeServidor(){
 
 // --- Cargar infraestructuras del servidor y mezclar con locales ---
 function sincronizarInfrasDesdeServidor(){
-  if(!sesionActual||!sesionActual.token||!isOnline)return;
+  if(!tieneTokenServidor()||!isOnline)return;
   fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'listar_infras',token:sesionActual.token})})
-  .then(function(r){return r.json();})
+  .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
   .then(function(data){
     if(!data.ok||!data.infras)return;
     var locales=getInfras();
@@ -1878,7 +1951,7 @@ function sincronizarInfrasDesdeServidor(){
 
 // --- Subir registros locales que el servidor no tiene ---
 function sincronizarRegistrosAlServidor(){
-  if(!sesionActual||!sesionActual.token||!isOnline)return;
+  if(!tieneTokenServidor()||!isOnline)return;
   var locales=getRegistros();
   if(locales.length===0)return;
   var enviados=0;
@@ -1894,7 +1967,7 @@ function sincronizarRegistrosAlServidor(){
 
 // --- Subir infraestructuras locales al servidor ---
 function sincronizarInfrasAlServidor(){
-  if(!sesionActual||!sesionActual.token||!isOnline)return;
+  if(!tieneTokenServidor()||!isOnline)return;
   var locales=getInfras();
   if(locales.length===0)return;
   fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'guardar_infras_lote',token:sesionActual.token,infras:locales})})
@@ -1905,26 +1978,28 @@ function sincronizarInfrasAlServidor(){
 
 // --- Sincronizar ganadero individual al servidor ---
 function sincronizarGanaderoServidor(ganadero){
-  if(!sesionActual||!sesionActual.token||!isOnline)return;
-  fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'guardar_ganadero',token:sesionActual.token,ganadero:ganadero})}).catch(function(){});
+  if(!tieneTokenServidor()||!isOnline)return;
+  fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'guardar_ganadero',token:sesionActual.token,ganadero:ganadero})})
+  .then(function(r){if(!r.ok)console.warn('Error sync ganadero: HTTP '+r.status);})
+  .catch(function(e){console.warn('Error red sync ganadero:',e);});
 }
 
 // --- Subir todos los ganaderos locales al servidor ---
 function sincronizarGanaderosAlServidor(){
-  if(!sesionActual||!sesionActual.token||!isOnline)return;
+  if(!tieneTokenServidor()||!isOnline)return;
   var locales=getGanaderos();
   if(locales.length===0)return;
   fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'guardar_ganaderos_lote',token:sesionActual.token,ganaderos:locales})})
-  .then(function(r){return r.json();})
+  .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
   .then(function(d){if(d.ok)console.log('Ganaderos subidos al servidor: '+d.guardados);})
-  .catch(function(){});
+  .catch(function(e){console.warn('Error sync ganaderos al servidor:',e);});
 }
 
 // --- Cargar ganaderos del servidor y mezclar con locales ---
 function sincronizarGanaderosDesdeServidor(){
-  if(!sesionActual||!sesionActual.token||!isOnline)return;
+  if(!tieneTokenServidor()||!isOnline)return;
   fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'listar_ganaderos',token:sesionActual.token})})
-  .then(function(r){return r.json();})
+  .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
   .then(function(data){
     if(!data.ok||!data.ganaderos)return;
     var locales=getGanaderos();
@@ -1951,20 +2026,20 @@ function sincronizarGanaderosDesdeServidor(){
 
 // --- Sincronizar campos personalizados al servidor ---
 function sincronizarCamposAlServidor(){
-  if(!sesionActual||!sesionActual.token||!isOnline)return;
+  if(!tieneTokenServidor()||!isOnline)return;
   if(camposExtraGan.length>0){
-    fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'guardar_campos',token:sesionActual.token,tipo:'ganadero',campos:camposExtraGan})}).catch(function(){});
+    fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'guardar_campos',token:sesionActual.token,tipo:'ganadero',campos:camposExtraGan})}).catch(function(e){console.warn('Error sync campos ganadero:',e);});
   }
   if(camposExtraInf.length>0){
-    fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'guardar_campos',token:sesionActual.token,tipo:'infra',campos:camposExtraInf})}).catch(function(){});
+    fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'guardar_campos',token:sesionActual.token,tipo:'infra',campos:camposExtraInf})}).catch(function(e){console.warn('Error sync campos infra:',e);});
   }
 }
 
 // --- Cargar campos personalizados del servidor ---
 function sincronizarCamposDesdeServidor(){
-  if(!sesionActual||!sesionActual.token||!isOnline)return;
+  if(!tieneTokenServidor()||!isOnline)return;
   fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'listar_campos',token:sesionActual.token})})
-  .then(function(r){return r.json();})
+  .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
   .then(function(data){
     if(!data.ok||!data.campos)return;
     var cambios=false;
@@ -1990,10 +2065,10 @@ function sincronizarCamposDesdeServidor(){
 
 // --- Sincronizar usuarios bidireccional (admin) ---
 function sincronizarUsuariosDesdeServidor(){
-  if(!sesionActual||!sesionActual.token||!isOnline)return;
+  if(!tieneTokenServidor()||!isOnline)return;
   if(sesionActual.rol!=='admin')return;
   fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'listar_usuarios',token:sesionActual.token})})
-  .then(function(r){return r.json();})
+  .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
   .then(function(data){
     if(!data.ok||!data.usuarios)return;
     var locales=getUsuariosLocal();
