@@ -7,6 +7,7 @@ var galeriaSeleccion=[]; // Para modo comparador manual: [{codigo,url}, ...]
 var galeriaModo='galeria'; // 'galeria', 'comparar', 'comparativas'
 var galeriaLbIndex=0;
 var galeriaTab='galeria'; // 'galeria', 'comparativas', 'precache'
+var galeriaCompDatos=[]; // Array temporal para onclick de comparativas
 
 function initGaleria(){
   galeriaSeleccion=[];
@@ -415,6 +416,9 @@ function renderComparativas(visitas,unidad){
     return;
   }
 
+  // Almacenar datos para acceso desde onclick sin problemas de escapado
+  galeriaCompDatos=[];
+
   var h='<div class="gal-comp-info">'+visitas.length+' visita'+(visitas.length>1?'s':'')+' con fotos comparativas</div>';
 
   visitas.forEach(function(v,vIdx){
@@ -438,7 +442,9 @@ function renderComparativas(visitas,unidad){
       h+='<div class="gal-comp-pair-col">';
       h+='<div class="gal-comp-wp-label" style="background:#e74c3c">W1</div>';
       if(urlW1){
-        h+='<img src="'+urlW1+'" class="gal-comp-pair-img" onclick="abrirLbComparativa(\''+fw1.cloudinary_url+'\')">';
+        var idxW1=galeriaCompDatos.length;
+        galeriaCompDatos.push({codigo:fw1.codigo,url:fw1.cloudinary_url});
+        h+='<img src="'+urlW1+'" class="gal-comp-pair-img" onclick="abrirLbComparativa('+idxW1+')">';
         h+='<div class="gal-comp-pair-code">'+fw1.codigo+'</div>';
       }else{
         h+='<div class="gal-comp-pair-empty">Sin foto W1</div>';
@@ -448,7 +454,9 @@ function renderComparativas(visitas,unidad){
       h+='<div class="gal-comp-pair-col">';
       h+='<div class="gal-comp-wp-label" style="background:#9b59b6">W2</div>';
       if(urlW2){
-        h+='<img src="'+urlW2+'" class="gal-comp-pair-img" onclick="abrirLbComparativa(\''+fw2.cloudinary_url+'\')">';
+        var idxW2=galeriaCompDatos.length;
+        galeriaCompDatos.push({codigo:fw2.codigo,url:fw2.cloudinary_url});
+        h+='<img src="'+urlW2+'" class="gal-comp-pair-img" onclick="abrirLbComparativa('+idxW2+')">';
         h+='<div class="gal-comp-pair-code">'+fw2.codigo+'</div>';
       }else{
         h+='<div class="gal-comp-pair-empty">Sin foto W2</div>';
@@ -458,9 +466,10 @@ function renderComparativas(visitas,unidad){
 
       // Botón comparar slider si ambas fotos existen
       if(fw1&&fw2){
-        var d1=JSON.stringify({codigo:fw1.codigo,url:fw1.cloudinary_url}).replace(/'/g,'\\\'');
-        var d2=JSON.stringify({codigo:fw2.codigo,url:fw2.cloudinary_url}).replace(/'/g,'\\\'');
-        h+='<div style="text-align:center;margin:-4px 0 12px"><button class="gal-btn-comp-pair" onclick="compararParW1W2('+escapeForOnclick(fw1)+','+escapeForOnclick(fw2)+')">Comparar W1 vs W2</button></div>';
+        // Guardar índices del par para onclick limpio
+        var pairIdx=galeriaCompDatos.length;
+        galeriaCompDatos.push({tipo:'par',w1:{codigo:fw1.codigo,url:fw1.cloudinary_url},w2:{codigo:fw2.codigo,url:fw2.cloudinary_url}});
+        h+='<div style="text-align:center;margin:-4px 0 12px"><button class="gal-btn-comp-pair" onclick="compararParPorIndice('+pairIdx+')">Comparar W1 vs W2</button></div>';
       }
     }
 
@@ -478,24 +487,23 @@ function renderComparativas(visitas,unidad){
   el.dataset.visitas=JSON.stringify(visitas);
 }
 
-function escapeForOnclick(foto){
-  var obj={c:foto.codigo,u:foto.cloudinary_url};
-  return "'"+JSON.stringify(obj).replace(/'/g,"\\'")+"'";
+function compararParPorIndice(idx){
+  var par=galeriaCompDatos[idx];
+  if(!par||!par.w1||!par.w2)return;
+  compararParW1W2(par.w1,par.w2);
 }
 
-function compararParW1W2(json1,json2){
-  var f1=JSON.parse(json1);
-  var f2=JSON.parse(json2);
+function compararParW1W2(f1,f2){
   galeriaSeleccion=[
-    {codigo:f1.c,url:f1.u,unidad:'',tipo:'',fecha:''},
-    {codigo:f2.c,url:f2.u,unidad:'',tipo:'',fecha:''}
+    {codigo:f1.codigo,url:f1.url,unidad:'',tipo:'',fecha:''},
+    {codigo:f2.codigo,url:f2.url,unidad:'',tipo:'',fecha:''}
   ];
   var el=document.getElementById('gal-comp-slider-result');
   if(!el)return;
   el.style.display='block';
 
-  var url1=transformarURLCloudinary(f1.u,'w_800,q_auto:good');
-  var url2=transformarURLCloudinary(f2.u,'w_800,q_auto:good');
+  var url1=transformarURLCloudinary(f1.url,'w_800,q_auto:good');
+  var url2=transformarURLCloudinary(f2.url,'w_800,q_auto:good');
 
   var h='<div class="gal-comp-header">';
   h+='<h4>W1 vs W2</h4>';
@@ -505,7 +513,7 @@ function compararParW1W2(json1,json2){
   h+='<button onclick="cerrarCompComparativas()" style="background:#e74c3c;color:#fff">✕</button>';
   h+='</div></div>';
   h+='<div id="galCompAreaComp">';
-  h+=renderSliderGaleriaComp(url1,url2,f1.c,f2.c,'W1','W2');
+  h+=renderSliderGaleriaComp(url1,url2,f1.codigo,f2.codigo,'W1','W2');
   h+='</div>';
 
   el.innerHTML=h;
@@ -525,8 +533,8 @@ function compararEntreVisitas(vIdx){
   var fw1Prev=vPrev.W1[0];
   if(fw1Actual&&fw1Prev){
     compararParW1W2(
-      JSON.stringify({c:fw1Prev.codigo,u:fw1Prev.cloudinary_url}),
-      JSON.stringify({c:fw1Actual.codigo,u:fw1Actual.cloudinary_url})
+      {codigo:fw1Prev.codigo,url:fw1Prev.cloudinary_url},
+      {codigo:fw1Actual.codigo,url:fw1Actual.cloudinary_url}
     );
   }else{
     // Intentar con W2
@@ -534,8 +542,8 @@ function compararEntreVisitas(vIdx){
     var fw2Prev=vPrev.W2[0];
     if(fw2Actual&&fw2Prev){
       compararParW1W2(
-        JSON.stringify({c:fw2Prev.codigo,u:fw2Prev.cloudinary_url}),
-        JSON.stringify({c:fw2Actual.codigo,u:fw2Actual.cloudinary_url})
+        {codigo:fw2Prev.codigo,url:fw2Prev.cloudinary_url},
+        {codigo:fw2Actual.codigo,url:fw2Actual.cloudinary_url}
       );
     }else{
       showToast('No hay fotos comparativas comunes entre ambas visitas','warning');
@@ -618,12 +626,14 @@ function initSliderCompEvents(){
   handleMove(area.getBoundingClientRect().left+area.getBoundingClientRect().width/2);
 }
 
-function abrirLbComparativa(url){
+function abrirLbComparativa(idx){
+  var dato=galeriaCompDatos[idx];
+  if(!dato)return;
   var img=document.getElementById('galLbImg');
   var info=document.getElementById('galLbInfo');
-  img.src=transformarURLCloudinary(url,'w_1200,q_auto:good');
+  img.src=transformarURLCloudinary(dato.url,'w_1200,q_auto:good');
   img.style.display='block';
-  info.textContent='Foto comparativa';
+  info.textContent=dato.codigo||'Foto comparativa';
   document.getElementById('galeriaLightbox').classList.add('show');
 }
 
@@ -918,9 +928,13 @@ function limpiarGaleriaCacheAntigua(){
   }catch(e){}
 }
 
-// Ejecutar limpieza automática al cargar la app
-if(document.readyState==='loading'){
-  document.addEventListener('DOMContentLoaded',function(){setTimeout(limpiarGaleriaCacheAntigua,5000);});
-}else{
-  setTimeout(limpiarGaleriaCacheAntigua,5000);
+// Ejecutar limpieza automática al cargar la app (esperar a que fotosDB esté lista)
+function iniciarLimpiezaGaleriaCache(){
+  if(typeof fotosDB!=='undefined'&&fotosDB){
+    limpiarGaleriaCacheAntigua();
+  }else{
+    // Reintentar hasta que fotosDB esté lista
+    setTimeout(iniciarLimpiezaGaleriaCache,3000);
+  }
 }
+setTimeout(iniciarLimpiezaGaleriaCache,5000);
