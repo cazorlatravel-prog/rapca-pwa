@@ -1988,7 +1988,7 @@ function sincronizarCamposDesdeServidor(){
   .catch(function(e){console.error('Error sincronizando campos:',e);});
 }
 
-// --- Sincronizar usuarios desde servidor (admin) ---
+// --- Sincronizar usuarios bidireccional (admin) ---
 function sincronizarUsuariosDesdeServidor(){
   if(!sesionActual||!sesionActual.token||!isOnline)return;
   if(sesionActual.rol!=='admin')return;
@@ -1997,21 +1997,34 @@ function sincronizarUsuariosDesdeServidor(){
   .then(function(data){
     if(!data.ok||!data.usuarios)return;
     var locales=getUsuariosLocal();
+    var emailsServidor={};
+    data.usuarios.forEach(function(su){emailsServidor[su.email.toLowerCase()]=true;});
     var emailsLocales={};
     locales.forEach(function(u){emailsLocales[u.email.toLowerCase()]=true;});
-    var nuevos=0;
+    // 1. Descargar: añadir al local usuarios que solo están en servidor
+    var nuevosLocal=0;
     data.usuarios.forEach(function(su){
       if(!emailsLocales[su.email.toLowerCase()]){
         locales.push({id:su.id,email:su.email,nombre:su.nombre,password:'',rol:su.rol,activo:su.activo});
-        nuevos++;
+        nuevosLocal++;
       }
     });
-    if(nuevos>0){
+    if(nuevosLocal>0){
       guardarUsuariosLocal(locales);
-      console.log('Sincronización: '+nuevos+' usuarios nuevos del servidor');
+      console.log('Sincronización: '+nuevosLocal+' usuarios nuevos del servidor');
+    }
+    // 2. Subir: enviar al servidor usuarios que solo están en local
+    var pendientes=locales.filter(function(u){
+      return u.email&&!emailsServidor[u.email.toLowerCase()];
+    });
+    if(pendientes.length>0){
+      fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'sync_usuarios',token:sesionActual.token,usuarios:pendientes})})
+      .then(function(r){return r.json();})
+      .then(function(d){if(d.ok&&d.creados>0)console.log('Usuarios subidos al servidor: '+d.creados);})
+      .catch(function(){});
     }
   })
-  .catch(function(){});
+  .catch(function(e){console.warn('No se pudieron sincronizar usuarios:',e);});
 }
 
 document.addEventListener('DOMContentLoaded',function(){

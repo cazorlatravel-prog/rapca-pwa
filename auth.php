@@ -218,6 +218,39 @@ switch ($action) {
         echo json_encode(['ok' => true]);
         break;
 
+    case 'sync_usuarios':
+        // Subir usuarios creados offline al servidor
+        $token = trim($input['token'] ?? '');
+        $admin = obtenerUsuarioPorToken($pdo, $token);
+        if (!$admin || $admin['rol'] !== 'admin') {
+            echo json_encode(['error' => 'Sin permisos de administrador']);
+            exit;
+        }
+        $usuarios = $input['usuarios'] ?? [];
+        $creados = 0;
+        foreach ($usuarios as $u) {
+            $email = trim($u['email'] ?? '');
+            $nombre = trim($u['nombre'] ?? '');
+            $pass = $u['password'] ?? '';
+            $rol = in_array($u['rol'] ?? '', ['admin', 'operador']) ? $u['rol'] : 'operador';
+            if (!$email || !$nombre) continue;
+            // Verificar si ya existe
+            $existe = $pdo->prepare("SELECT id FROM usuarios WHERE email = ?");
+            $existe->execute([$email]);
+            if ($existe->fetch()) continue; // Ya existe, no duplicar
+            // Crear con password hasheado (si tiene password local, usarlo)
+            if ($pass) {
+                $hash = password_hash($pass, PASSWORD_BCRYPT);
+            } else {
+                $hash = password_hash('temp_' . bin2hex(random_bytes(4)), PASSWORD_BCRYPT);
+            }
+            $pdo->prepare("INSERT INTO usuarios (email, nombre, password, rol, activo) VALUES (?, ?, ?, ?, ?)")
+                ->execute([$email, $nombre, $hash, $rol, $u['activo'] ?? 1]);
+            $creados++;
+        }
+        echo json_encode(['ok' => true, 'creados' => $creados]);
+        break;
+
     default:
         echo json_encode(['error' => 'Acción no reconocida: ' . $action]);
         break;
