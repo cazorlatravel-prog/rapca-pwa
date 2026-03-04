@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rapca-v58';
+const CACHE_NAME = 'rapca-v59';
 const urlsToCache = [
   './',
   './index.html',
@@ -6,6 +6,7 @@ const urlsToCache = [
   './dashboard.js',
   './timeline.js',
   './comparador.js',
+  './galeria.js',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
