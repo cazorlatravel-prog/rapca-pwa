@@ -649,6 +649,30 @@ function actualizarListaCapas(){
     // Tabla de subcapas
     html+='<div id="capa-tabla-'+capaId+'" style="display:'+(expandida?'block':'none')+'">';
     if(totalSub>0){
+      // Selectores de campo para etiquetas y buscador
+      var camposDisp=obtenerCamposDisponiblesCapa(nombre);
+      if(camposDisp.length>0){
+        var campoLabelActual=capasKMLCampoLabel[nombre]||'';
+        var campoBuscarActual=capasKMLCampoBuscar[nombre]||'';
+        html+='<div class="capa-campo-selectors">';
+        // Selector de etiquetas
+        html+='<div class="capa-campo-row"><label>🏷️ Etiquetas</label><select class="capa-campo-select" onchange="cambiarCampoEtiquetaCapa(\''+nombreEsc+'\',this.value)">';
+        html+='<option value=""'+(campoLabelActual===''?' selected':'')+'>Sin etiquetas</option>';
+        html+='<option value="_nombre"'+(campoLabelActual==='_nombre'?' selected':'')+'>Nombre del elemento</option>';
+        camposDisp.forEach(function(c){
+          html+='<option value="'+c.replace(/"/g,'&quot;')+'"'+(campoLabelActual===c?' selected':'')+'>'+c+'</option>';
+        });
+        html+='</select></div>';
+        // Selector de buscador
+        html+='<div class="capa-campo-row"><label>🔎 Buscador</label><select class="capa-campo-select" onchange="cambiarCampoBuscarCapa(\''+nombreEsc+'\',this.value)">';
+        html+='<option value=""'+(campoBuscarActual===''?' selected':'')+'>Todos los campos</option>';
+        html+='<option value="_nombre"'+(campoBuscarActual==='_nombre'?' selected':'')+'>Nombre del elemento</option>';
+        camposDisp.forEach(function(c){
+          html+='<option value="'+c.replace(/"/g,'&quot;')+'"'+(campoBuscarActual===c?' selected':'')+'>'+c+'</option>';
+        });
+        html+='</select></div>';
+        html+='</div>';
+      }
       // Buscador
       html+='<input type="text" class="capa-tabla-buscar" placeholder="Buscar en '+totalSub+' elementos..." oninput="filtrarTablaCapas(\''+nombreEsc+'\',this.value)">';
       // Tabla
@@ -659,7 +683,17 @@ function actualizarListaCapas(){
       var iconos={punto:'📍',linea:'〰️',poligono:'⬡'};
       subcapas.forEach(function(sc,idx){
         var scNombre=obtenerNombreDisplaySC(sc,idx,nombre);
-        html+='<tr class="'+(sc.visible?'':'fila-oculta')+'" data-nombre="'+scNombre.toLowerCase()+'">';
+        // Generar texto de búsqueda según campo seleccionado
+        var campoBusc=capasKMLCampoBuscar[nombre]||'';
+        var textoBusq='';
+        if(campoBusc==='_nombre'){textoBusq=(sc.nombre||'').toLowerCase();}
+        else if(campoBusc&&sc.extData&&sc.extData[campoBusc]){textoBusq=String(sc.extData[campoBusc]).toLowerCase();}
+        else{
+          // Todos los campos: nombre + todos los extData
+          textoBusq=(sc.nombre||'').toLowerCase();
+          if(sc.extData){Object.keys(sc.extData).forEach(function(k){textoBusq+=' '+String(sc.extData[k]).toLowerCase();});}
+        }
+        html+='<tr class="'+(sc.visible?'':'fila-oculta')+'" data-nombre="'+scNombre.toLowerCase()+'" data-buscar="'+textoBusq.replace(/"/g,'&quot;')+'">';
         html+='<td class="col-check"><input type="checkbox"'+(sc.visible?' checked':'')+' onchange="toggleSubcapa(\''+nombreEsc+'\','+idx+',this.checked)"></td>';
         html+='<td class="col-nombre" title="'+(sc.desc||scNombre)+'">'+scNombre+'</td>';
         html+='<td class="col-tipo">'+(iconos[sc.tipo]||'')+'</td>';
@@ -704,8 +738,8 @@ function filtrarTablaCapas(nombre,query){
   var q=query.toLowerCase().trim();
   var filas=tbody.querySelectorAll('tr');
   for(var i=0;i<filas.length;i++){
-    var nombreData=filas[i].getAttribute('data-nombre')||'';
-    filas[i].style.display=(!q||nombreData.indexOf(q)!==-1)?'':'none';
+    var textoBuscar=filas[i].getAttribute('data-buscar')||filas[i].getAttribute('data-nombre')||'';
+    filas[i].style.display=(!q||textoBuscar.indexOf(q)!==-1)?'':'none';
   }
 }
 function zoomACapa(nombre){
@@ -796,6 +830,7 @@ function obtenerNombreDisplaySC(sc,idx,nombreCapa){
 }
 
 var capasKMLCampoLabel={}; // Guardar qué campo se usa como etiqueta por capa
+var capasKMLCampoBuscar={}; // Guardar qué campo se usa como buscador por capa
 
 function toggleEtiquetasCapa(nombre){
   if(!mapaLeaflet)return;
@@ -894,11 +929,37 @@ function aplicarEtiquetasCapa(nombre,campo){
   if(labels.length===0)showToast('Sin elementos para etiquetar','info');
   else showToast('Etiquetas: '+campo.replace('_nombre','Nombre')+' ('+labels.length+')','success');
 }
+function obtenerCamposDisponiblesCapa(nombre){
+  var subcapas=capasKMLSubcapas[nombre]||[];
+  var camposSet={};
+  subcapas.forEach(function(sc){
+    if(sc.extData){
+      Object.keys(sc.extData).forEach(function(k){
+        if(String(sc.extData[k]).trim())camposSet[k]=true;
+      });
+    }
+  });
+  return Object.keys(camposSet);
+}
+function cambiarCampoEtiquetaCapa(nombre,campo){
+  // Quitar etiquetas existentes si las hay
+  if(capasKMLLabels[nombre]){
+    capasKMLLabels[nombre].forEach(function(lbl){mapaLeaflet.removeLayer(lbl);});
+    delete capasKMLLabels[nombre];
+    delete capasKMLCampoLabel[nombre];
+  }
+  if(!campo){actualizarListaCapas();return;} // "Sin etiquetas"
+  aplicarEtiquetasCapa(nombre,campo);
+}
+function cambiarCampoBuscarCapa(nombre,campo){
+  capasKMLCampoBuscar[nombre]=campo||'';
+  actualizarListaCapas();
+}
 function eliminarCapaMapa(nombre){
   if(capasKML[nombre]){
     mapaLeaflet.removeLayer(capasKML[nombre]);
     if(controlCapas)controlCapas.removeLayer(capasKML[nombre]);
-    delete capasKML[nombre];delete capasKMLRaw[nombre];delete capasKMLSubcapas[nombre];delete capasKMLEstilo[nombre];
+    delete capasKML[nombre];delete capasKMLRaw[nombre];delete capasKMLSubcapas[nombre];delete capasKMLEstilo[nombre];delete capasKMLCampoBuscar[nombre];
     // Limpiar etiquetas
     if(capasKMLLabels[nombre]){capasKMLLabels[nombre].forEach(function(l){mapaLeaflet.removeLayer(l);});delete capasKMLLabels[nombre];}
     // Limpiar permisos
@@ -1336,6 +1397,25 @@ function buscarEnMapa(query,resultsId){
     if(texto.indexOf(query)!==-1){
       resultados.push({tipo:'infra',label:inf.idUnidad||'--',sub:(inf.nombre||'')+(inf.municipio?' | '+inf.municipio:''),lat:parseFloat(inf.lat),lon:parseFloat(inf.lon),color:'#8e44ad',icon:'INF'});
     }
+  });
+  // Buscar en capas KML
+  Object.keys(capasKMLSubcapas).forEach(function(nombreCapa){
+    var subcapas=capasKMLSubcapas[nombreCapa]||[];
+    var campoBusc=capasKMLCampoBuscar[nombreCapa]||'';
+    subcapas.forEach(function(sc,idx){
+      if(!sc.lat||!sc.lon||!sc.visible)return;
+      var texto='';
+      if(campoBusc==='_nombre'){texto=(sc.nombre||'').toLowerCase();}
+      else if(campoBusc&&sc.extData&&sc.extData[campoBusc]){texto=String(sc.extData[campoBusc]).toLowerCase();}
+      else{
+        texto=(sc.nombre||'').toLowerCase();
+        if(sc.extData){Object.keys(sc.extData).forEach(function(k){texto+=' '+String(sc.extData[k]).toLowerCase();});}
+      }
+      if(texto.indexOf(query)!==-1){
+        var displayName=obtenerNombreDisplaySC(sc,idx,nombreCapa);
+        resultados.push({tipo:'kml',label:displayName,sub:nombreCapa,lat:sc.lat,lon:sc.lon,color:'#e67e22',icon:'KML'});
+      }
+    });
   });
   // Limitar a 20 resultados
   resultados=resultados.slice(0,20);
