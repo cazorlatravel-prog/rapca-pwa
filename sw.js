@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rapca-v71';
+const CACHE_NAME = 'rapca-v72';
 const CACHE_CDN = 'rapca-cdn-v1';
 
 // Archivos propios (pre-cacheados en install)

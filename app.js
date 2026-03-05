@@ -1988,13 +1988,22 @@ function cargarListaUsuarios(){
     });
     el.innerHTML=h;
   }
+  // Siempre mostrar usuarios locales inmediatamente
+  var locales=getUsuariosLocal();
+  if(locales.length>0){renderUsuarios(locales);}
   if(isOnline){
+    // Diagnóstico: verificar estado de sesiones en servidor
+    fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'debug_sesiones',token:sesionActual.token})})
+    .then(function(r){return r.json();})
+    .then(function(d){console.log('DEBUG sesiones:',JSON.stringify(d));})
+    .catch(function(e){console.error('debug_sesiones error:',e.message);});
     fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'listar_usuarios',token:sesionActual.token})})
     .then(function(r){
       if(!r.ok)throw new Error('HTTP '+r.status);
       return r.json();
     })
     .then(function(data){
+      console.log('listar_usuarios respuesta:',JSON.stringify(data));
       if(data.ok&&data.usuarios){
         console.log('Usuarios del servidor:',data.usuarios.length);
         // Fusionar servidor + locales (mantener usuarios que solo existen localmente)
@@ -2012,8 +2021,7 @@ function cargarListaUsuarios(){
         guardarUsuariosLocal(merged);
         renderUsuarios(merged);
       }else{
-        console.warn('listar_usuarios respuesta sin ok:',JSON.stringify(data));
-        showToast('Servidor: '+(data.error||'error desconocido'),'warning');
+        console.warn('listar_usuarios error:',JSON.stringify(data));
         renderUsuarios(getUsuariosLocal());
       }
     })

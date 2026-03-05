@@ -83,35 +83,18 @@ function generarToken() {
 
 function obtenerUsuarioPorToken($pdo, $token) {
     if (!$token || strlen($token) < 10) return null;
-    // Detectar nombre de columna de fecha en sesiones (fecha_ultimo_acceso o fecha_creacion)
-    $colsS = $pdo->query("SHOW COLUMNS FROM sesiones")->fetchAll(PDO::FETCH_COLUMN);
-    $dateColS = in_array('fecha_ultimo_acceso', $colsS) ? 'fecha_ultimo_acceso' : (in_array('updated_at', $colsS) ? 'updated_at' : null);
-    // Limpiar tokens expirados
-    if ($dateColS) {
-        try {
-            $pdo->prepare("DELETE FROM sesiones WHERE $dateColS < DATE_SUB(NOW(), INTERVAL ? DAY)")
-                ->execute([AUTH_TOKEN_EXPIRY_DAYS]);
-        } catch (PDOException $e) { /* no bloquear */ }
-    }
-    // Buscar sesión por token
-    if ($dateColS) {
-        $stmt = $pdo->prepare("SELECT u.id, u.email, u.nombre, u.rol, u.activo FROM usuarios u
-                               INNER JOIN sesiones s ON s.usuario_id = u.id
-                               WHERE s.token = ? AND u.activo = 1
-                               AND s.$dateColS >= DATE_SUB(NOW(), INTERVAL ? DAY)");
-        $stmt->execute([$token, AUTH_TOKEN_EXPIRY_DAYS]);
-    } else {
-        // Sin columna de fecha, buscar sin filtro de expiración
+    try {
+        // Consulta simple sin filtro de fecha — máxima compatibilidad
         $stmt = $pdo->prepare("SELECT u.id, u.email, u.nombre, u.rol, u.activo FROM usuarios u
                                INNER JOIN sesiones s ON s.usuario_id = u.id
                                WHERE s.token = ? AND u.activo = 1");
         $stmt->execute([$token]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $user ?: null;
+    } catch (PDOException $e) {
+        error_log('obtenerUsuarioPorToken error: ' . $e->getMessage());
+        return null;
     }
-    $user = $stmt->fetch(PDO::FETCH_ASSOC);
-    if ($user && $dateColS) {
-        try { $pdo->prepare("UPDATE sesiones SET $dateColS = NOW() WHERE token = ?")->execute([$token]); } catch (PDOException $e) {}
-    }
-    return $user;
 }
 
 // --- Acciones ---
@@ -197,11 +180,36 @@ switch ($action) {
         echo json_encode(['ok' => true, 'id' => $pdo->lastInsertId()]);
         break;
 
+    case 'debug_sesiones':
+        // Diagnóstico temporal — eliminar en producción
+        $token = trim($input['token'] ?? '');
+        $sesCount = $pdo->query("SELECT COUNT(*) FROM sesiones")->fetchColumn();
+        $colsS = $pdo->query("SHOW COLUMNS FROM sesiones")->fetchAll(PDO::FETCH_COLUMN);
+        $tokenExists = false;
+        if ($token) {
+            $st = $pdo->prepare("SELECT COUNT(*) FROM sesiones WHERE token = ?");
+            $st->execute([$token]);
+            $tokenExists = $st->fetchColumn() > 0;
+        }
+        $user = $token ? obtenerUsuarioPorToken($pdo, $token) : null;
+        echo json_encode([
+            'sesiones_count' => $sesCount,
+            'sesiones_columns' => $colsS,
+            'token_exists' => $tokenExists,
+            'token_first10' => $token ? substr($token, 0, 10) . '...' : null,
+            'user_from_token' => $user
+        ]);
+        break;
+
     case 'listar_usuarios':
         $token = trim($input['token'] ?? '');
         $admin = obtenerUsuarioPorToken($pdo, $token);
         if (!$admin || $admin['rol'] !== 'admin') {
-            echo json_encode(['error' => 'Sin permisos de administrador']);
+            // Dar más info para diagnóstico
+            $debugInfo = ['token_length' => strlen($token)];
+            if ($admin) { $debugInfo['admin_rol'] = $admin['rol']; }
+            else { $debugInfo['admin'] = 'null - token no encontrado en sesiones'; }
+            echo json_encode(['error' => 'Sin permisos de administrador', 'debug' => $debugInfo]);
             exit;
         }
         // Compatible con ambas versiones de esquema (fecha_creacion o created_at)
