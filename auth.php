@@ -67,21 +67,30 @@ try {
 
 } catch (PDOException $e) {
     http_response_code(500);
-    echo json_encode(['error' => 'Error de base de datos: ' . $e->getMessage()]);
+    error_log('RAPCA auth DB error: ' . $e->getMessage());
+    echo json_encode(['error' => 'Error de conexión con la base de datos']);
     exit;
 }
 
 // --- Funciones auxiliares ---
+define('AUTH_TOKEN_EXPIRY_DAYS', 30);
+
 function generarToken() {
     return bin2hex(random_bytes(32));
 }
 
 function obtenerUsuarioPorToken($pdo, $token) {
-    if (!$token) return null;
+    if (!$token || strlen($token) < 10) return null;
+    // Limpiar tokens expirados
+    try {
+        $pdo->prepare("DELETE FROM sesiones WHERE fecha_ultimo_acceso < DATE_SUB(NOW(), INTERVAL ? DAY)")
+            ->execute([AUTH_TOKEN_EXPIRY_DAYS]);
+    } catch (PDOException $e) { /* no bloquear */ }
     $stmt = $pdo->prepare("SELECT u.id, u.email, u.nombre, u.rol, u.activo FROM usuarios u
                            INNER JOIN sesiones s ON s.usuario_id = u.id
-                           WHERE s.token = ? AND u.activo = 1");
-    $stmt->execute([$token]);
+                           WHERE s.token = ? AND u.activo = 1
+                           AND s.fecha_ultimo_acceso >= DATE_SUB(NOW(), INTERVAL ? DAY)");
+    $stmt->execute([$token, AUTH_TOKEN_EXPIRY_DAYS]);
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($user) {
         $pdo->prepare("UPDATE sesiones SET fecha_ultimo_acceso = NOW() WHERE token = ?")->execute([$token]);
@@ -266,6 +275,6 @@ switch ($action) {
         break;
 
     default:
-        echo json_encode(['error' => 'Acción no reconocida: ' . $action]);
+        echo json_encode(['error' => 'Acción no reconocida']);
         break;
 }

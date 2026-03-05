@@ -1,4 +1,5 @@
 // --- Galería de Fotos Cloudinary ---
+function galeriaToken(){return sesionActual?sesionActual.token:'';}
 var galeriaFotos=[];
 var galeriaTotal=0;
 var galeriaOffset=0;
@@ -44,7 +45,7 @@ function cargarFotosGaleria(resetear){
   var desde=document.getElementById('gal-filtro-desde')?document.getElementById('gal-filtro-desde').value:'';
   var hasta=document.getElementById('gal-filtro-hasta')?document.getElementById('gal-filtro-hasta').value:'';
 
-  var body={action:'listar',limit:galeriaLimit,offset:galeriaOffset};
+  var body={action:'listar',limit:galeriaLimit,offset:galeriaOffset,token:galeriaToken()};
   if(unidad)body.unidad=unidad;
   if(tipo)body.tipo=tipo;
   if(desde)body.desde=desde;
@@ -379,7 +380,7 @@ function initComparativas(){
   // Cargar listado de unidades si no están cargados
   var sel=document.getElementById('gal-comp-unidad');
   if(sel&&sel.options.length<=1){
-    fetch('galeria.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'listar',limit:1,offset:0})})
+    fetch('galeria.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'listar',limit:1,offset:0,token:galeriaToken()})})
     .then(function(r){return r.json();})
     .then(function(data){
       if(data.ok&&data.unidades){
@@ -400,7 +401,7 @@ function cargarComparativas(){
   if(!unidad){el.innerHTML='<div class="gal-empty">Selecciona una unidad</div>';return;}
   el.innerHTML='<div class="gal-loading">Cargando fotos comparativas...</div>';
 
-  fetch('galeria.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'comparativas',unidad:unidad})})
+  fetch('galeria.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'comparativas',unidad:unidad,token:galeriaToken()})})
   .then(function(r){return r.json();})
   .then(function(data){
     if(!data.ok){el.innerHTML='<div class="gal-empty">Error: '+(data.error||'')+'</div>';return;}
@@ -648,7 +649,7 @@ function initPrecache(){
   // Cargar unidades si no están
   var sel=document.getElementById('gal-precache-unidad');
   if(sel&&sel.options.length<=1){
-    fetch('galeria.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'listar',limit:1,offset:0})})
+    fetch('galeria.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'listar',limit:1,offset:0,token:galeriaToken()})})
     .then(function(r){return r.json();})
     .then(function(data){
       if(data.ok&&data.unidades){
@@ -674,7 +675,7 @@ function precachearUnidad(){
   barEl.style.width='0%';
   txtEl.textContent='Obteniendo lista de fotos...';
 
-  fetch('galeria.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'fotos_unidad',unidad:unidad})})
+  fetch('galeria.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'fotos_unidad',unidad:unidad,token:galeriaToken()})})
   .then(function(r){return r.json();})
   .then(function(data){
     if(!data.ok||!data.fotos||data.fotos.length===0){

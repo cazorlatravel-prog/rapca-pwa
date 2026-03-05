@@ -105,7 +105,8 @@ try {
 
 } catch (PDOException $e) {
     http_response_code(500);
-    echo json_encode(['error' => 'Error de base de datos: ' . $e->getMessage()]);
+    error_log('RAPCA datos DB error: ' . $e->getMessage());
+    echo json_encode(['error' => 'Error de conexión con la base de datos']);
     exit;
 }
 
@@ -418,6 +419,6 @@ switch ($action) {
         break;
 
     default:
-        echo json_encode(['error' => 'Acción no reconocida: ' . $action]);
+        echo json_encode(['error' => 'Acción no reconocida']);
         break;
 }

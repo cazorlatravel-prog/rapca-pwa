@@ -33,6 +33,20 @@ var INFRA_CAMPOS_BASE=[
 var fotosDB=null;
 var fotosCacheMemoria={}; // Cache en memoria como respaldo
 
+// --- Utilidades de seguridad ---
+function escapeHTML(s){if(!s)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function safeJSONParse(str,fallback){try{return JSON.parse(str);}catch(e){console.warn('JSON parse error:',e.message);return fallback!==undefined?fallback:null;}}
+function generarTokenSeguro(){var a=new Uint8Array(32);crypto.getRandomValues(a);return Array.from(a,function(b){return b.toString(16).padStart(2,'0');}).join('');}
+// Hash simple para contraseñas locales (SHA-256, no reversible)
+function hashPassword(password){
+  if(typeof crypto!=='undefined'&&crypto.subtle){
+    return crypto.subtle.digest('SHA-256',new TextEncoder().encode(password)).then(function(buf){return Array.from(new Uint8Array(buf),function(b){return b.toString(16).padStart(2,'0');}).join('');});
+  }
+  // Fallback: simple hash para navegadores viejos
+  var hash=0;for(var i=0;i<password.length;i++){hash=((hash<<5)-hash)+password.charCodeAt(i);hash|=0;}
+  return Promise.resolve('fallback_'+Math.abs(hash).toString(16));
+}
+
 // --- Forzar actualización (borrar SW + caches) ---
 function forzarActualizacion(){
   if(!confirm('Se borrará la caché y se recargará la app. ¿Continuar?'))return;
@@ -43,46 +57,84 @@ function forzarActualizacion(){
 }
 
 // --- Auth local (funciona sin backend PHP) ---
-function getUsuariosLocal(){var d=localStorage.getItem('rapca_usuarios_local');return d?JSON.parse(d):[];}
-function guardarUsuariosLocal(lista){localStorage.setItem('rapca_usuarios_local',JSON.stringify(lista));}
+function getUsuariosLocal(){var d=localStorage.getItem('rapca_usuarios_local');return safeJSONParse(d,[]);}
+function guardarUsuariosLocal(lista){try{localStorage.setItem('rapca_usuarios_local',JSON.stringify(lista));}catch(e){console.error('Error guardando usuarios:',e);showToast('Error guardando datos locales','error');}}
 function initUsuariosLocal(){
   var users=getUsuariosLocal();
-  if(users.length===0){
-    users.push({id:1,email:'rapcajaen@gmail.com',nombre:'Administrador',password:'Gallito9431%',rol:'admin',activo:1});
-    guardarUsuariosLocal(users);
+  // Migrar contraseñas plaintext a hash
+  var needsMigration=false;
+  users.forEach(function(u){
+    if(u.password&&!u.passwordHash){needsMigration=true;}
+  });
+  if(needsMigration){
+    var pending=users.filter(function(u){return u.password&&!u.passwordHash;});
+    var migrateNext=function(idx){
+      if(idx>=pending.length)return;
+      hashPassword(pending[idx].password).then(function(h){
+        pending[idx].passwordHash=h;
+        delete pending[idx].password;
+        guardarUsuariosLocal(users);
+        migrateNext(idx+1);
+      });
+    };
+    migrateNext(0);
   }
-  // Migrar admin antiguo a nuevas credenciales
+  if(users.length===0){
+    hashPassword('Gallito9431%').then(function(h){
+      users.push({id:1,email:'rapcajaen@gmail.com',nombre:'Administrador',passwordHash:h,rol:'admin',activo:1});
+      guardarUsuariosLocal(users);
+    });
+    return;
+  }
+  // Migrar admin antiguo
   var oldAdmin=users.find(function(u){return u.email==='admin@rapca.com'&&u.rol==='admin';});
   if(oldAdmin){
     oldAdmin.email='rapcajaen@gmail.com';
-    oldAdmin.password='Gallito9431%';
     oldAdmin.nombre='Administrador';
-    guardarUsuariosLocal(users);
-    console.log('Admin migrado a rapcajaen@gmail.com');
+    hashPassword('Gallito9431%').then(function(h){
+      oldAdmin.passwordHash=h;delete oldAdmin.password;
+      guardarUsuariosLocal(users);
+    });
   }
-  // Asegurar que existe el admin correcto
+  // Asegurar que existe el admin
   var adminOk=users.find(function(u){return u.email==='rapcajaen@gmail.com'&&u.rol==='admin';});
   if(!adminOk){
-    users.push({id:1,email:'rapcajaen@gmail.com',nombre:'Administrador',password:'Gallito9431%',rol:'admin',activo:1});
-    guardarUsuariosLocal(users);
+    hashPassword('Gallito9431%').then(function(h){
+      users.push({id:1,email:'rapcajaen@gmail.com',nombre:'Administrador',passwordHash:h,rol:'admin',activo:1});
+      guardarUsuariosLocal(users);
+    });
   }
 }
 function loginLocal(email,password){
   var users=getUsuariosLocal();
   var emailNorm=email.trim().toLowerCase();
-  var passNorm=password.trim();
-  var user=users.find(function(u){return u.email.toLowerCase()===emailNorm&&(u.password===passNorm||u.password===password)&&u.activo!==0;});
-  if(user)return{ok:true,token:'local_'+Date.now(),usuario:{email:user.email,nombre:user.nombre,rol:user.rol,id:user.id}};
-  return{ok:false,error:'Email o contraseña incorrectos'};
+  // Compatibilidad: soportar tanto passwordHash como password legacy
+  var user=users.find(function(u){return u.email.toLowerCase()===emailNorm&&u.activo!==0;});
+  if(!user)return{ok:false,error:'Email o contraseña incorrectos'};
+  // Si aún tiene password sin hash (migración pendiente), comparar directamente
+  if(user.password&&!user.passwordHash){
+    if(user.password===password.trim()||user.password===password){
+      return{ok:true,token:generarTokenSeguro(),usuario:{email:user.email,nombre:user.nombre,rol:user.rol,id:user.id}};
+    }
+    return{ok:false,error:'Email o contraseña incorrectos'};
+  }
+  // Comparar con hash (async → devuelve promesa)
+  return hashPassword(password.trim()).then(function(h){
+    if(user.passwordHash===h){
+      return{ok:true,token:generarTokenSeguro(),usuario:{email:user.email,nombre:user.nombre,rol:user.rol,id:user.id}};
+    }
+    return{ok:false,error:'Email o contraseña incorrectos'};
+  });
 }
 function crearUsuarioLocal(email,nombre,password,rol){
   var users=getUsuariosLocal();
   var emailNorm=email.trim().toLowerCase();
-  var passNorm=password.trim();
-  if(users.find(function(u){return u.email.toLowerCase()===emailNorm;}))return{ok:false,error:'Email ya existe'};
-  users.push({id:Date.now(),email:emailNorm,nombre:nombre,password:passNorm,rol:rol||'operador',activo:1});
-  guardarUsuariosLocal(users);
-  return{ok:true};
+  if(users.find(function(u){return u.email.toLowerCase()===emailNorm;}))return Promise.resolve({ok:false,error:'Email ya existe'});
+  return hashPassword(password.trim()).then(function(h){
+    users.push({id:Date.now(),email:emailNorm,nombre:nombre,passwordHash:h,rol:rol||'operador',activo:1});
+    guardarUsuariosLocal(users);
+    return{ok:true};
+  });
 }
 
 // --- Migración de datos: EV → EI ---
@@ -223,7 +275,8 @@ function extraerErrorSubida(text){
 }
 function subirFotoNube(codigo,dataUrl,unidad,tipo){
   if(!isOnline)return;
-  var payload=JSON.stringify({codigo:codigo,imagen:dataUrl,unidad:unidad,tipo:tipo});
+  var token=sesionActual?sesionActual.token:'';
+  var payload=JSON.stringify({codigo:codigo,imagen:dataUrl,unidad:unidad,tipo:tipo,token:token});
   console.log('Subiendo '+codigo+' ('+Math.round(payload.length/1024)+'KB)');
   fetch(UPLOAD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:payload}).then(function(res){if(!res.ok)return res.text().then(function(t){var msg=extraerErrorSubida(t);throw new Error('HTTP '+res.status+': '+msg);});return res.json();}).then(function(data){if(data.ok){eliminarSubidaPendiente(codigo);showToast('☁️ '+codigo,'success');}else throw new Error(data.error||'Error servidor');}).catch(function(err){console.error('Error subida '+codigo+':',err.message);showToast('⚠️ '+codigo+': '+err.message,'error');});
 }
@@ -243,7 +296,7 @@ function subirConReintentos(codigo,dataUrl,unidad,tipo,maxI,cb){
   function intentar(){
     i++;
     console.log('Subida '+codigo+' intento '+i+'/'+maxI);
-    fetch(UPLOAD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codigo:codigo,imagen:dataUrl,unidad:unidad,tipo:tipo})}).then(function(r){if(!r.ok)return r.text().then(function(t){var msg=extraerErrorSubida(t);throw new Error('HTTP '+r.status+': '+msg);});return r.json();}).then(function(d){if(d.ok){eliminarSubidaPendiente(codigo);console.log('Subida OK: '+codigo+(d.url?' → '+d.url:''));cb(true);}else throw new Error(d.error||'Error servidor');}).catch(function(e){console.error('Intento '+i+'/'+maxI+' '+codigo+':',e.message);if(i<maxI&&isOnline)setTimeout(intentar,i*2000);else{showToast('❌ '+codigo+': '+e.message,'error');cb(false);}});
+    var tkn=sesionActual?sesionActual.token:'';fetch(UPLOAD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codigo:codigo,imagen:dataUrl,unidad:unidad,tipo:tipo,token:tkn})}).then(function(r){if(!r.ok)return r.text().then(function(t){var msg=extraerErrorSubida(t);throw new Error('HTTP '+r.status+': '+msg);});return r.json();}).then(function(d){if(d.ok){eliminarSubidaPendiente(codigo);console.log('Subida OK: '+codigo+(d.url?' → '+d.url:''));cb(true);}else throw new Error(d.error||'Error servidor');}).catch(function(e){console.error('Intento '+i+'/'+maxI+' '+codigo+':',e.message);if(i<maxI&&isOnline)setTimeout(intentar,i*2000);else{showToast('❌ '+codigo+': '+e.message,'error');cb(false);}});
   }
   intentar();
 }
@@ -277,7 +330,7 @@ function cerrarAlertaSync(){var el=document.getElementById('syncAlert');if(el)el
 // Notificación al administrador
 function notificarFalloAdmin(codigos){
   if(!isOnline||codigos.length===0)return;
-  fetch('notificar.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codigos:codigos,error:'Fallo tras 3 reintentos por foto',dispositivo:navigator.userAgent})}).catch(function(){});
+  var ntkn=sesionActual?sesionActual.token:'';fetch('notificar.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codigos:codigos,error:'Fallo tras 3 reintentos por foto',dispositivo:navigator.userAgent,token:ntkn})}).catch(function(){});
 }
 
 // --- Mapa de Visitas (Leaflet) ---
@@ -331,7 +384,7 @@ function actualizarMarcadoresMapa(){
       if(!r.lat||!r.lon)return;
       var color=r.tipo==='VP'?'#88d8b0':r.tipo==='EL'?'#2ecc71':'#fd9853';
       var mk=L.marker([r.lat,r.lon],{icon:L.divIcon({className:'',html:'<div style="background:'+color+';width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',iconSize:[14,14],iconAnchor:[7,7]})});
-      mk.bindPopup('<b>'+r.tipo+' '+r.unidad+'</b><br>'+r.fecha+(r.operador_nombre?'<br>'+r.operador_nombre:''));
+      mk.bindPopup('<b>'+escapeHTML(r.tipo)+' '+escapeHTML(r.unidad)+'</b><br>'+escapeHTML(r.fecha)+(r.operador_nombre?'<br>'+escapeHTML(r.operador_nombre):''));
       clusterGroup.addLayer(mk);
     });
   }
@@ -352,7 +405,7 @@ function actualizarMarcadoresMapa(){
         if(codigos.length===0)return;
         var labelText=r.unidad+' '+fc.waypoint;
         var mk=L.marker([r.lat,r.lon],{icon:L.divIcon({className:'mapa-marker-label',html:'<div class="marker-dot marker-comp"></div><div class="marker-etiqueta marker-etiqueta-comp">'+labelText+'</div>',iconSize:[0,0],iconAnchor:[0,8]})});
-        mk.bindPopup('<b>📷 '+fc.waypoint+' — '+r.unidad+'</b><br>'+r.fecha+'<br>Fotos: '+codigos.join(', '));
+        mk.bindPopup('<b>📷 '+escapeHTML(fc.waypoint)+' — '+escapeHTML(r.unidad)+'</b><br>'+escapeHTML(r.fecha)+'<br>Fotos: '+escapeHTML(codigos.join(', ')));
         clusterGroup.addLayer(mk);
       });
     });
@@ -375,7 +428,7 @@ function actualizarMarcadoresMapa(){
       });
       var idLabel=inf.idUnidad||'--';
       var mk=L.marker([parseFloat(inf.lat),parseFloat(inf.lon)],{icon:L.divIcon({className:'mapa-marker-label',html:'<div class="marker-dot marker-infra"></div><div class="marker-etiqueta marker-etiqueta-infra">'+idLabel+'</div>',iconSize:[0,0],iconAnchor:[0,8]})});
-      mk.bindPopup('<b>'+idLabel+'</b><br>'+(inf.nombre||'')+'<br>'+(inf.municipio||'')+'<br><small>VP: '+vpCount+' | EL: '+elCount+' | EI: '+eiCount+' | Fotos: '+fotoCount+'</small>');
+      mk.bindPopup('<b>'+escapeHTML(idLabel)+'</b><br>'+escapeHTML(inf.nombre||'')+'<br>'+escapeHTML(inf.municipio||'')+'<br><small>VP: '+vpCount+' | EL: '+elCount+' | EI: '+eiCount+' | Fotos: '+fotoCount+'</small>');
       clusterGroup.addLayer(mk);
     });
   }
@@ -699,7 +752,7 @@ function actualizarListaCapas(){
         }
         html+='<tr class="'+(sc.visible?'':'fila-oculta')+'" data-nombre="'+scNombre.toLowerCase()+'" data-buscar="'+textoBusq.replace(/"/g,'&quot;')+'">';
         html+='<td class="col-check"><input type="checkbox"'+(sc.visible?' checked':'')+' onchange="toggleSubcapa(\''+nombreEsc+'\','+idx+',this.checked)"></td>';
-        html+='<td class="col-nombre" title="'+(sc.desc||scNombre)+'">'+scNombre+'</td>';
+        html+='<td class="col-nombre" title="'+escapeHTML(sc.desc||scNombre)+'">'+escapeHTML(scNombre)+'</td>';
         html+='<td class="col-tipo">'+(iconos[sc.tipo]||'')+'</td>';
         html+='<td class="col-acciones"><button class="btn-zoom" onclick="zoomASubcapa(\''+nombreEsc+'\','+idx+')">🔍 Ir</button></td>';
         html+='</tr>';
@@ -1428,7 +1481,7 @@ function buscarEnMapa(query,resultsId){
   resultados.forEach(function(r,idx){
     html+='<div class="mapa-search-result" onclick="irAPuntoMapa('+r.lat+','+r.lon+',\''+resultsId+'\')">';
     html+='<div class="sr-icon" style="background:'+r.color+'">'+r.icon+'</div>';
-    html+='<div class="sr-info"><div class="sr-title">'+r.label+'</div><div class="sr-sub">'+r.sub+'</div></div>';
+    html+='<div class="sr-info"><div class="sr-title">'+escapeHTML(r.label)+'</div><div class="sr-sub">'+escapeHTML(r.sub)+'</div></div>';
     html+='</div>';
   });
   container.innerHTML=html;
@@ -1483,7 +1536,7 @@ function buscarUnidadEnMapa(query,resultsId){
     }
     html+='<div class="mapa-search-result" onclick="'+onclick+'">';
     html+='<div class="sr-icon" style="background:'+r.color+'">'+r.icon+'</div>';
-    html+='<div class="sr-info"><div class="sr-title">'+r.label+'</div><div class="sr-sub">'+r.sub+'</div></div>';
+    html+='<div class="sr-info"><div class="sr-title">'+escapeHTML(r.label)+'</div><div class="sr-sub">'+escapeHTML(r.sub)+'</div></div>';
     html+='</div>';
   });
   container.innerHTML=html;
@@ -1734,12 +1787,24 @@ function initPreviewListeners(){
 function agregarFotoALista(c){var lId,iId,pre=(camaraTipo==='VP')?'vp':(camaraTipo==='EL')?'el':'ev';if(camaraSubtipo==='general'){lId=pre+'-fotos-lista';iId=pre+'-fotos';}else if(camaraSubtipo==='W1'){lId=pre+'-fc1-lista';iId=pre+'-fc1';}else{lId=pre+'-fc2-lista';iId=pre+'-fc2';}document.getElementById(lId).innerHTML+='<span class="foto-tag">'+c+'</span>';var inp=document.getElementById(iId);inp.value=inp.value?(inp.value+', '+c):c;}
 
 // --- Autenticación y Sesiones ---
+function procesarLoginLocal(email,pass,msgError){
+  var btn=document.getElementById('btnLogin');
+  var result=loginLocal(email,pass);
+  // loginLocal puede devolver un objeto o una Promise
+  Promise.resolve(result).then(function(r){
+    btn.textContent='Entrar';btn.disabled=false;
+    if(r.ok){
+      sesionActual={token:r.token,email:r.usuario.email,nombre:r.usuario.nombre,rol:r.usuario.rol,id:r.usuario.id};
+      localStorage.setItem('rapca_sesion',JSON.stringify(sesionActual));
+      ocultarLoginMostrarApp();
+    }else{mostrarErrorLogin(msgError||r.error||'Email o contraseña incorrectos');}
+  });
+}
 function iniciarSesion(){
   var email=document.getElementById('login-email').value.trim().toLowerCase();
   var pass=document.getElementById('login-password').value.trim();
   if(!email||!pass){mostrarErrorLogin('Email y contraseña requeridos');return;}
   var btn=document.getElementById('btnLogin');btn.textContent='Entrando...';btn.disabled=true;
-  // Servidor primero cuando hay conexión
   if(isOnline){
     fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'login',email:email,password:pass})})
     .then(function(r){
@@ -1749,38 +1814,25 @@ function iniciarSesion(){
     .then(function(data){
       btn.textContent='Entrar';btn.disabled=false;
       if(data.ok){
-        // Guardar usuario en local para futuros logins offline
-        var users=getUsuariosLocal();
-        var existing=users.find(function(u){return u.email.toLowerCase()===email;});
-        if(existing){existing.id=data.usuario.id;existing.nombre=data.usuario.nombre;existing.password=pass;existing.rol=data.usuario.rol;existing.activo=1;}
-        else{users.push({id:data.usuario.id,email:email,nombre:data.usuario.nombre,password:pass,rol:data.usuario.rol,activo:1});}
-        guardarUsuariosLocal(users);
+        // Guardar hash local para futuros logins offline
+        hashPassword(pass).then(function(h){
+          var users=getUsuariosLocal();
+          var existing=users.find(function(u){return u.email.toLowerCase()===email;});
+          if(existing){existing.id=data.usuario.id;existing.nombre=data.usuario.nombre;existing.passwordHash=h;delete existing.password;existing.rol=data.usuario.rol;existing.activo=1;}
+          else{users.push({id:data.usuario.id,email:email,nombre:data.usuario.nombre,passwordHash:h,rol:data.usuario.rol,activo:1});}
+          guardarUsuariosLocal(users);
+        });
         sesionActual={token:data.token,email:data.usuario.email,nombre:data.usuario.nombre,rol:data.usuario.rol,id:data.usuario.id};
         localStorage.setItem('rapca_sesion',JSON.stringify(sesionActual));
         ocultarLoginMostrarApp();
-        // Sincronizar lista de usuarios del servidor al local
         sincronizarUsuariosDesdeServidor();
       }else{mostrarErrorLogin(data.error||'Email o contraseña incorrectos');}
     })
     .catch(function(e){
-      // Sin servidor: intentar login local
-      btn.textContent='Entrar';btn.disabled=false;
-      var resultLocal=loginLocal(email,pass);
-      if(resultLocal.ok){
-        sesionActual={token:resultLocal.token,email:resultLocal.usuario.email,nombre:resultLocal.usuario.nombre,rol:resultLocal.usuario.rol,id:resultLocal.usuario.id};
-        localStorage.setItem('rapca_sesion',JSON.stringify(sesionActual));
-        ocultarLoginMostrarApp();
-      }else{mostrarErrorLogin('Sin conexión al servidor y cuenta no encontrada en este dispositivo');}
+      procesarLoginLocal(email,pass,'Sin conexión al servidor y cuenta no encontrada en este dispositivo');
     });
   }else{
-    // Sin conexión: login local
-    var resultLocal=loginLocal(email,pass);
-    btn.textContent='Entrar';btn.disabled=false;
-    if(resultLocal.ok){
-      sesionActual={token:resultLocal.token,email:resultLocal.usuario.email,nombre:resultLocal.usuario.nombre,rol:resultLocal.usuario.rol,id:resultLocal.usuario.id};
-      localStorage.setItem('rapca_sesion',JSON.stringify(sesionActual));
-      ocultarLoginMostrarApp();
-    }else{mostrarErrorLogin('Sin conexión. Cuenta no encontrada en este dispositivo');}
+    procesarLoginLocal(email,pass,'Sin conexión. Cuenta no encontrada en este dispositivo');
   }
 }
 function mostrarErrorLogin(msg){var el=document.getElementById('loginError');el.textContent=msg;el.classList.add('show');}
@@ -1831,12 +1883,14 @@ function crearUsuario(){
     .then(function(r){return r.json();})
     .then(function(data){
       if(data.ok){
-        // Guardar en local con ID del servidor
-        var users=getUsuariosLocal();
-        if(!users.find(function(u){return u.email.toLowerCase()===email.toLowerCase();})){
-          users.push({id:data.id,email:email.toLowerCase(),nombre:nombre,password:pass,rol:rol||'operador',activo:1});
-          guardarUsuariosLocal(users);
-        }
+        // Guardar hash local con ID del servidor
+        hashPassword(pass).then(function(h){
+          var users=getUsuariosLocal();
+          if(!users.find(function(u){return u.email.toLowerCase()===email.toLowerCase();})){
+            users.push({id:data.id,email:email.toLowerCase(),nombre:nombre,passwordHash:h,rol:rol||'operador',activo:1});
+            guardarUsuariosLocal(users);
+          }
+        });
         document.getElementById('admin-nuevo-email').value='';document.getElementById('admin-nuevo-nombre').value='';document.getElementById('admin-nuevo-pass').value='';
         cargarListaUsuarios();
         showToast('Usuario creado en servidor','success');
@@ -1844,18 +1898,20 @@ function crearUsuario(){
     })
     .catch(function(){
       // Fallback local si servidor falla
-      var localResult=crearUsuarioLocal(email,nombre,pass,rol);
+      crearUsuarioLocal(email,nombre,pass,rol).then(function(localResult){
+        if(!localResult.ok){showToast(localResult.error||'Error','error');return;}
+        document.getElementById('admin-nuevo-email').value='';document.getElementById('admin-nuevo-nombre').value='';document.getElementById('admin-nuevo-pass').value='';
+        cargarListaUsuarios();
+        showToast('Usuario creado solo en este dispositivo (sin conexión al servidor)','warning');
+      });
+    });
+  }else{
+    crearUsuarioLocal(email,nombre,pass,rol).then(function(localResult){
       if(!localResult.ok){showToast(localResult.error||'Error','error');return;}
       document.getElementById('admin-nuevo-email').value='';document.getElementById('admin-nuevo-nombre').value='';document.getElementById('admin-nuevo-pass').value='';
       cargarListaUsuarios();
-      showToast('Usuario creado solo en este dispositivo (sin conexión al servidor)','warning');
+      showToast('Usuario creado solo en este dispositivo (sin conexión)','warning');
     });
-  }else{
-    var localResult=crearUsuarioLocal(email,nombre,pass,rol);
-    if(!localResult.ok){showToast(localResult.error||'Error','error');return;}
-    document.getElementById('admin-nuevo-email').value='';document.getElementById('admin-nuevo-nombre').value='';document.getElementById('admin-nuevo-pass').value='';
-    cargarListaUsuarios();
-    showToast('Usuario creado solo en este dispositivo (sin conexión)','warning');
   }
 }
 function cargarListaUsuarios(){
@@ -1980,8 +2036,8 @@ function cargarRegistrosServidor(){
     if(data.registros.length===0){el.innerHTML='<p style="text-align:center;color:#888;padding:15px">Sin registros en servidor</p>';return;}
     var h='<p style="font-size:.85rem;color:#666;margin-bottom:10px">'+data.registros.length+' registros</p>';
     data.registros.slice(0,100).forEach(function(r){
-      h+='<div class="record-item"><span class="tipo '+r.tipo.toLowerCase()+'">'+r.tipo+'</span> <strong>'+r.zona+'>'+r.unidad+'</strong>'+(r.transecto?' ('+r.transecto+')':'');
-      h+='<div class="info">'+r.fecha+' | '+(r.usuario_nombre||r.usuario_email)+'</div></div>';
+      h+='<div class="record-item"><span class="tipo '+escapeHTML(r.tipo).toLowerCase()+'">'+escapeHTML(r.tipo)+'</span> <strong>'+escapeHTML(r.zona)+'>'+escapeHTML(r.unidad)+'</strong>'+(r.transecto?' ('+escapeHTML(r.transecto)+')':'');
+      h+='<div class="info">'+escapeHTML(r.fecha)+' | '+escapeHTML(r.usuario_nombre||r.usuario_email)+'</div></div>';
     });
     el.innerHTML=h;
   }).catch(function(){});
@@ -2351,9 +2407,9 @@ function limpiarFormularioEL(){var t=new Date().toISOString().split('T')[0];docu
 function limpiarFormularioEV(c){if(c){var t=new Date().toISOString().split('T')[0];document.getElementById('ev-fecha').value=t;document.getElementById('ev-zona').value='';document.getElementById('ev-unidad').value='';setTransecto(1);contadorFotosEV={};localStorage.setItem('rapca_contadores_EI',JSON.stringify(contadorFotosEV));localStorage.removeItem('rapca_borrador_ev');}for(var i=1;i<=10;i++){document.getElementById('ev-planta'+i).value='';for(var n=1;n<=10;n++)document.getElementById('ev-planta'+i+'-n'+n).value='';}for(var i=1;i<=3;i++){document.getElementById('ev-palatable'+i).value='';for(var n=1;n<=15;n++)document.getElementById('ev-palatable'+i+'-n'+n).value='';var el=document.getElementById('media-palatable'+i);if(el)el.textContent='';}for(var i=1;i<=7;i++)document.getElementById('ev-herb'+i).value='';['ev-past1','ev-past2','ev-past3','ev-mat1cob','ev-mat1alt','ev-mat1esp','ev-mat2cob','ev-mat2alt','ev-mat2esp','ev-fotos','ev-fc1','ev-fc2','ev-obs'].forEach(function(id){document.getElementById(id).value='';});['ev-fotos-lista','ev-fc1-lista','ev-fc2-lista'].forEach(function(id){document.getElementById(id).innerHTML='';});actualizarEstadisticasPlantas();actualizarEstadisticasPalatables();actualizarMediaHerbaceas();actualizarResumenMatorral();window.scrollTo(0,0);}
 function guardarVP(){var z=document.getElementById('vp-zona').value.trim(),u=document.getElementById('vp-unidad').value.trim();if(!z||!u){showToast('Zona y Unidad obligatorios','error');return;}var d={pastoreo:[document.getElementById('vp-past1').value,document.getElementById('vp-past2').value,document.getElementById('vp-past3').value],observacionPastoreo:{senal:document.getElementById('vp-senal').value,veredas:document.getElementById('vp-veredas').value,cagarrutas:document.getElementById('vp-cagarrutas').value},fotos:document.getElementById('vp-fotos').value,fotosComp:[{numero:document.getElementById('vp-fc1').value,waypoint:'W1'},{numero:document.getElementById('vp-fc2').value,waypoint:'W2'}],observaciones:document.getElementById('vp-obs').value};var r={id:editandoId||Date.now(),tipo:'VP',fecha:document.getElementById('vp-fecha').value,zona:z,unidad:u,transecto:'',datos:d,enviado:false,lat:currentLat,lon:currentLon};if(sesionActual){r.operador_email=sesionActual.email;r.operador_nombre=sesionActual.nombre;}if(editandoId){actualizarRegistro(r);editandoId=null;}else guardarLocal(r);showToast('VP guardado','success');limpiarFormularioVP();if(isOnline){enviarRegistro(r);sincronizarRegistroServidor(r);}}
 function guardarEV(){var z=document.getElementById('ev-zona').value.trim(),u=document.getElementById('ev-unidad').value.trim();if(!z||!u){showToast('Zona y Unidad obligatorios','error');return;}var pl=[];for(var i=1;i<=10;i++){var nt=[],c=0,s=0;for(var n=1;n<=10;n++){var v=document.getElementById('ev-planta'+i+'-n'+n).value;nt.push(v);if(v!==''){c++;s+=parseInt(v);}}pl.push({nombre:document.getElementById('ev-planta'+i).value,notas:nt,media:c>0?(s/c).toFixed(2):''});}var pa=[],paTC=0,paTS=0;for(var i=1;i<=3;i++){var nt=[],c=0,s=0;for(var n=1;n<=15;n++){var v=document.getElementById('ev-palatable'+i+'-n'+n).value;nt.push(v);if(v!==''){c++;s+=parseInt(v);paTC++;paTS+=parseInt(v);}}pa.push({nombre:document.getElementById('ev-palatable'+i).value,notas:nt,media:c>0?(s/c).toFixed(2):''});}var hb=[];for(var i=1;i<=7;i++)hb.push(document.getElementById('ev-herb'+i).value);var c1=parseFloat(document.getElementById('ev-mat1cob').value)||0,c2=parseFloat(document.getElementById('ev-mat2cob').value)||0,a1=parseFloat(document.getElementById('ev-mat1alt').value)||0,a2=parseFloat(document.getElementById('ev-mat2alt').value)||0;var nC=(document.getElementById('ev-mat1cob').value!==''?1:0)+(document.getElementById('ev-mat2cob').value!==''?1:0),nA=(document.getElementById('ev-mat1alt').value!==''?1:0)+(document.getElementById('ev-mat2alt').value!==''?1:0);var mediaCob=nC>0?((c1+c2)/nC).toFixed(1):'',mediaAlt=nA>0?((a1+a2)/nA).toFixed(1):'',volumen=calcularVolumenMatorral(parseFloat(mediaCob),parseFloat(mediaAlt))||'';var pC=0,pS=0;for(var i=1;i<=10;i++)for(var n=1;n<=10;n++){var v=document.getElementById('ev-planta'+i+'-n'+n).value;if(v!==''){pC++;pS+=parseInt(v);}}var hC=0,hS=0;for(var i=1;i<=7;i++){var v=document.getElementById('ev-herb'+i).value;if(v!==''){hC++;hS+=parseInt(v);}}var d={plantas:pl,plantasMedia:pC>0?(pS/pC).toFixed(2):'',palatables:pa,palatablesMedia:paTC>0?(paTS/paTC).toFixed(2):'',pastoreo:[document.getElementById('ev-past1').value,document.getElementById('ev-past2').value,document.getElementById('ev-past3').value],herbaceas:hb,herbaceasMedia:hC>0?(hS/hC).toFixed(2):'',matorral:{punto1:{cobertura:document.getElementById('ev-mat1cob').value,altura:document.getElementById('ev-mat1alt').value,especie:document.getElementById('ev-mat1esp').value},punto2:{cobertura:document.getElementById('ev-mat2cob').value,altura:document.getElementById('ev-mat2alt').value,especie:document.getElementById('ev-mat2esp').value},mediaCob:mediaCob,mediaAlt:mediaAlt,volumen:volumen},fotos:document.getElementById('ev-fotos').value,fotosComp:[{numero:document.getElementById('ev-fc1').value,waypoint:'W1'},{numero:document.getElementById('ev-fc2').value,waypoint:'W2'}],observaciones:document.getElementById('ev-obs').value};var r={id:editandoId||Date.now(),tipo:'EI',fecha:document.getElementById('ev-fecha').value,zona:z,unidad:u,transecto:'T'+transectoActual,datos:d,enviado:false,lat:currentLat,lon:currentLon};if(sesionActual){r.operador_email=sesionActual.email;r.operador_nombre=sesionActual.nombre;}if(editandoId){actualizarRegistro(r);editandoId=null;}else guardarLocal(r);showToast('EI T'+transectoActual+' guardado','success');if(transectoActual>=3){limpiarFormularioEV(true);showToast('Unidad completada','info');}else{limpiarFormularioEV(false);setTransecto(transectoActual+1);}if(isOnline){enviarRegistro(r);sincronizarRegistroServidor(r);}}
-function getRegistros(){var d=localStorage.getItem('rapca_registros');return d?JSON.parse(d):[];}
+function getRegistros(){return safeJSONParse(localStorage.getItem('rapca_registros'),[]);}
 function getRegistrosUsuario(){var rs=getRegistros();if(sesionActual&&sesionActual.rol!=='admin'){rs=rs.filter(function(r){return r.operador_email===sesionActual.email;});}return rs;}
-function guardarLocal(r){var rs=getRegistros();rs.push(r);localStorage.setItem('rapca_registros',JSON.stringify(rs));updatePendingCount();if(mapaLeaflet)construirCapaComparativas();}
+function guardarLocal(r){var rs=getRegistros();rs.push(r);try{localStorage.setItem('rapca_registros',JSON.stringify(rs));}catch(e){console.error('Error guardando registro:',e);showToast('Error: almacenamiento lleno. Libere espacio.','error');return;}updatePendingCount();if(mapaLeaflet)construirCapaComparativas();}
 function actualizarRegistro(r){var rs=getRegistros();for(var i=0;i<rs.length;i++)if(rs[i].id===r.id){rs[i]=r;break;}localStorage.setItem('rapca_registros',JSON.stringify(rs));updatePendingCount();loadPanel();if(mapaLeaflet)construirCapaComparativas();}
 function marcarEnviado(id){var rs=getRegistros();for(var i=0;i<rs.length;i++)if(rs[i].id===id){rs[i].enviado=true;break;}localStorage.setItem('rapca_registros',JSON.stringify(rs));updatePendingCount();loadPanel();}
 function updatePendingCount(){var rs=getRegistrosUsuario(),p=rs.filter(function(x){return!x.enviado;}).length;document.getElementById('pendingCount').textContent=p;var b=document.getElementById('pendingBadge');b.style.display=p>0?'inline':'none';b.textContent=p;}
@@ -2492,7 +2548,7 @@ function initCamposExtra(){
   if(i)camposExtraInf=JSON.parse(i);
   renderCamposExtraGan();renderCamposExtraInf();
 }
-function getGanaderos(){var d=localStorage.getItem('rapca_ganaderos');return d?JSON.parse(d):[];}
+function getGanaderos(){return safeJSONParse(localStorage.getItem('rapca_ganaderos'),[]);}
 function guardarGanaderos(lista){localStorage.setItem('rapca_ganaderos',JSON.stringify(lista));}
 function guardarGanadero(){
   var idG=document.getElementById('gan-id').value.trim();
@@ -2574,7 +2630,7 @@ function renderCamposExtraGan(){
 }
 
 // --- Infraestructuras ---
-function getInfras(){var d=localStorage.getItem('rapca_infraestructuras');return d?JSON.parse(d):[];}
+function getInfras(){return safeJSONParse(localStorage.getItem('rapca_infraestructuras'),[]);}
 function guardarInfras(lista){localStorage.setItem('rapca_infraestructuras',JSON.stringify(lista));}
 function guardarInfra(){
   var r={id:editandoInfraId||Date.now(),extras:{}};
@@ -2786,7 +2842,7 @@ function ejecutarBusqueda(){
     var emoji=r.tipo==='infra'?'🌳':r.tipo==='registro'?(r.regTipo==='VP'?'🔍':'📊'):'👤';
     h+='<div class="search-result-item" onclick="irAResultado(\''+r.tipo+'\','+JSON.stringify(r.id||'').replace(/"/g,'&quot;')+')">';
     h+='<div class="sr-icon '+icon+'">'+emoji+'</div>';
-    h+='<div><div class="sr-title">'+r.titulo+'</div><div class="sr-sub">'+r.sub+'</div></div></div>';
+    h+='<div><div class="sr-title">'+escapeHTML(r.titulo)+'</div><div class="sr-sub">'+escapeHTML(r.sub)+'</div></div></div>';
   });
   if(resultados.length>30)h+='<p style="text-align:center;color:#888;padding:10px;font-size:.8rem">'+resultados.length+' resultados (mostrando 30)</p>';
   el.innerHTML=h;
@@ -3247,9 +3303,9 @@ function renderTablaAtributos(){
     h+='<td style="text-align:center"><button class="btn-zoom" style="font-size:.7rem;padding:2px 6px" onclick="event.stopPropagation();irASubcapaDesdeAttr(\''+nombreCapaEsc+'\','+fila._idx+')" title="Ver en mapa">📍 Ir</button></td>';
     attrTableColumnas.forEach(function(col){
       var v=fila[col]||'';
-      if(col==='Tipo')h+='<td class="attr-tipo-cell">'+(iconos[v]||v)+'</td>';
-      else if(col==='Lat'||col==='Lon')h+='<td class="attr-coord">'+v+'</td>';
-      else h+='<td title="'+String(v).replace(/"/g,'&quot;')+'">'+v+'</td>';
+      if(col==='Tipo')h+='<td class="attr-tipo-cell">'+(iconos[v]||escapeHTML(v))+'</td>';
+      else if(col==='Lat'||col==='Lon')h+='<td class="attr-coord">'+escapeHTML(v)+'</td>';
+      else h+='<td title="'+escapeHTML(String(v))+'">'+escapeHTML(v)+'</td>';
     });
     h+='</tr>';
   });

@@ -1,5 +1,5 @@
 <?php
-require_once 'config.php';
+require_once 'auth_helper.php';
 
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, OPTIONS');
@@ -15,22 +15,14 @@ if (!$input) { http_response_code(400); echo json_encode(['error' => 'JSON invá
 
 $action = trim($input['action'] ?? '');
 
-try {
-    $pdo = new PDO(
-        'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4',
-        DB_USER, DB_PASS,
-        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
-    );
-} catch (PDOException $e) {
-    http_response_code(500);
-    echo json_encode(['error' => 'Error de base de datos: ' . $e->getMessage()]);
-    exit;
-}
+$pdo = getDBConnection();
+
+// --- AUTENTICACIÓN ---
+$user = requireAuth($pdo, $input);
 
 switch ($action) {
 
     case 'listar':
-        // Filtros opcionales
         $unidad = trim($input['unidad'] ?? '');
         $tipo = trim($input['tipo'] ?? '');
         $desde = trim($input['desde'] ?? '');
@@ -42,22 +34,10 @@ switch ($action) {
         $where = [];
         $params = [];
 
-        if ($unidad) {
-            $where[] = 'unidad = ?';
-            $params[] = $unidad;
-        }
-        if ($tipo) {
-            $where[] = 'tipo = ?';
-            $params[] = $tipo;
-        }
-        if ($desde) {
-            $where[] = 'fecha_subida >= ?';
-            $params[] = $desde . ' 00:00:00';
-        }
-        if ($hasta) {
-            $where[] = 'fecha_subida <= ?';
-            $params[] = $hasta . ' 23:59:59';
-        }
+        if ($unidad) { $where[] = 'unidad = ?'; $params[] = $unidad; }
+        if ($tipo) { $where[] = 'tipo = ?'; $params[] = $tipo; }
+        if ($desde) { $where[] = 'fecha_subida >= ?'; $params[] = $desde . ' 00:00:00'; }
+        if ($hasta) { $where[] = 'fecha_subida <= ?'; $params[] = $hasta . ' 23:59:59'; }
 
         $sql = 'SELECT codigo, unidad, tipo, cloudinary_url, ancho, alto, tamano, fecha_subida FROM fotos';
         if (count($where) > 0) $sql .= ' WHERE ' . implode(' AND ', $where);
@@ -67,14 +47,12 @@ switch ($action) {
         $stmt->execute($params);
         $fotos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Contar total
         $sqlCount = 'SELECT COUNT(*) FROM fotos';
         if (count($where) > 0) $sqlCount .= ' WHERE ' . implode(' AND ', $where);
         $stmtC = $pdo->prepare($sqlCount);
         $stmtC->execute($params);
         $total = $stmtC->fetchColumn();
 
-        // Obtener lista de unidades y tipos disponibles para filtros
         $unidades = $pdo->query("SELECT DISTINCT unidad FROM fotos ORDER BY unidad")->fetchAll(PDO::FETCH_COLUMN);
         $tipos = $pdo->query("SELECT DISTINCT tipo FROM fotos ORDER BY tipo")->fetchAll(PDO::FETCH_COLUMN);
 
@@ -88,7 +66,6 @@ switch ($action) {
         break;
 
     case 'estadisticas':
-        // Resumen de fotos por unidad y tipo
         $stmt = $pdo->query("SELECT unidad, tipo, COUNT(*) as total, MAX(fecha_subida) as ultima FROM fotos GROUP BY unidad, tipo ORDER BY unidad, tipo");
         $stats = $stmt->fetchAll(PDO::FETCH_ASSOC);
         $totalFotos = $pdo->query("SELECT COUNT(*) FROM fotos")->fetchColumn();
@@ -96,14 +73,9 @@ switch ($action) {
         break;
 
     case 'comparativas':
-        // Fotos comparativas (W1/W2) de una unidad, agrupadas por fecha de subida
         $unidad = trim($input['unidad'] ?? '');
-        if (!$unidad) {
-            echo json_encode(['error' => 'Se requiere unidad']);
-            break;
-        }
+        if (!$unidad) { echo json_encode(['error' => 'Se requiere unidad']); break; }
 
-        // Buscar fotos que contengan _W1_ o _W2_ en el código para esta unidad
         $stmt = $pdo->prepare(
             "SELECT codigo, unidad, tipo, cloudinary_url, ancho, alto, fecha_subida
              FROM fotos
@@ -113,38 +85,23 @@ switch ($action) {
         $stmt->execute([$unidad]);
         $fotos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Agrupar por visita (fecha + tipo)
         $visitas = [];
         foreach ($fotos as $f) {
-            // Extraer waypoint del código: UNIDAD_TIPO_W1_NUM o UNIDAD_TIPO_W2_NUM
             preg_match('/_(W[12])_/', $f['codigo'], $m);
             $wp = $m[1] ?? 'W?';
             $fechaKey = substr($f['fecha_subida'], 0, 10) . '_' . $f['tipo'];
             if (!isset($visitas[$fechaKey])) {
-                $visitas[$fechaKey] = [
-                    'fecha' => substr($f['fecha_subida'], 0, 10),
-                    'tipo' => $f['tipo'],
-                    'W1' => [],
-                    'W2' => []
-                ];
+                $visitas[$fechaKey] = ['fecha' => substr($f['fecha_subida'], 0, 10), 'tipo' => $f['tipo'], 'W1' => [], 'W2' => []];
             }
             $visitas[$fechaKey][$wp][] = $f;
         }
 
-        echo json_encode([
-            'ok' => true,
-            'unidad' => $unidad,
-            'visitas' => array_values($visitas)
-        ]);
+        echo json_encode(['ok' => true, 'unidad' => $unidad, 'visitas' => array_values($visitas)]);
         break;
 
     case 'fotos_unidad':
-        // Obtener URLs de fotos comparativas de una unidad para pre-cacheo
         $unidad = trim($input['unidad'] ?? '');
-        if (!$unidad) {
-            echo json_encode(['error' => 'Se requiere unidad']);
-            break;
-        }
+        if (!$unidad) { echo json_encode(['error' => 'Se requiere unidad']); break; }
 
         $stmt = $pdo->prepare(
             "SELECT codigo, cloudinary_url, tipo, fecha_subida
@@ -155,15 +112,10 @@ switch ($action) {
         $stmt->execute([$unidad]);
         $fotos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        echo json_encode([
-            'ok' => true,
-            'unidad' => $unidad,
-            'fotos' => $fotos,
-            'total' => count($fotos)
-        ]);
+        echo json_encode(['ok' => true, 'unidad' => $unidad, 'fotos' => $fotos, 'total' => count($fotos)]);
         break;
 
     default:
-        echo json_encode(['error' => 'Acción no reconocida: ' . $action]);
+        echo json_encode(['error' => 'Acción no reconocida']);
         break;
 }
