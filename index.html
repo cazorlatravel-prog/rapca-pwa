@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="RAPCA">
@@ -19,8 +19,22 @@
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect fill='%231a3d2e' width='180' height='180' rx='40'/%3E%3Ctext x='90' y='125' text-anchor='middle' font-size='100'%3E🌿%3C/text%3E%3C/svg%3E">
 <title>RAPCA Campo</title>
 <style>
+:root{
+  --c-primary:#1a3d2e;--c-primary-light:#2d5a3d;--c-secondary:#5b8c5a;
+  --c-vp:#88d8b0;--c-el:#2ecc71;--c-ei:#fd9853;
+  --c-map:#3498db;--c-infra:#8e44ad;--c-dash:#f39c12;--c-tl:#e74c3c;--c-comp:#1abc9c;
+  --c-bg:#f5f5f0;--c-card:#fff;--c-border:#ddd;
+  --c-text:#1a3d2e;--c-text-secondary:#555;--c-text-muted:#666;
+  --c-danger:#e74c3c;--c-success:#27ae60;--c-info:#3498db;
+  --radius:10px;--radius-sm:8px;
+  --touch-min:44px;
+  --font-base:1rem;--font-sm:.875rem;--font-xs:.8rem;--font-label:.8rem;
+}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,sans-serif;background:#f5f5f0;color:#1a3d2e;min-height:100vh}
+/* Focus visible global */
+:focus-visible{outline:3px solid var(--c-secondary);outline-offset:2px;border-radius:4px}
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--c-secondary);outline-offset:0}
+body{font-family:-apple-system,sans-serif;background:var(--c-bg);color:var(--c-text);min-height:100vh;font-size:var(--font-base)}
 .header{background:linear-gradient(135deg,#1a3d2e,#2d5a3d);color:#fff;padding:15px;text-align:center;position:sticky;top:0;z-index:100}
 .header h1{font-size:1.3rem}
 .sync-status{font-size:.75rem;padding:4px 10px;border-radius:12px}
@@ -28,7 +42,7 @@ body{font-family:-apple-system,sans-serif;background:#f5f5f0;color:#1a3d2e;min-h
 .sync-status.offline{background:#e74c3c}
 .nav{display:flex;background:#fff;border-bottom:1px solid #e0e0e0;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:0 4px;gap:2px;scrollbar-width:none}
 .nav::-webkit-scrollbar{display:none}
-.nav-btn{flex:0 0 auto;padding:8px 6px 6px;border:none;background:transparent;font-size:.6rem;cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap;display:flex;flex-direction:column;align-items:center;gap:2px;color:#888;transition:all .2s ease;border-radius:8px 8px 0 0;min-width:48px}
+.nav-btn{flex:0 0 auto;padding:8px 6px 6px;border:none;background:transparent;font-size:var(--font-xs);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap;display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--c-text-secondary);transition:all .2s ease;border-radius:8px 8px 0 0;min-width:48px}
 .nav-btn .nav-icon{font-size:1.2rem;line-height:1}
 .nav-btn:hover{background:#f0f7f0;color:#1a3d2e}
 .nav-btn.active{border-bottom-color:#5b8c5a;color:#5b8c5a;font-weight:bold;background:#f0f7f0}
@@ -39,7 +53,7 @@ body{font-family:-apple-system,sans-serif;background:#f5f5f0;color:#1a3d2e;min-h
 .form-group{margin-bottom:12px}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .form-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
-label{display:block;font-size:.7rem;font-weight:bold;color:#666;margin-bottom:3px;text-transform:uppercase}
+label{display:block;font-size:var(--font-label);font-weight:bold;color:var(--c-text-secondary);margin-bottom:3px;text-transform:uppercase}
 input,select,textarea{width:100%;padding:10px;border:2px solid #ddd;border-radius:8px;font-size:1rem}
 input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .section-content{display:none;margin-top:10px}
@@ -58,7 +72,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .menu-btn:hover{transform:translateY(-2px);box-shadow:0 4px 16px rgba(0,0,0,.14)}
 .menu-btn:active{transform:scale(.97)}
 .menu-btn .menu-icon{font-size:1.8rem;line-height:1}
-.menu-btn .menu-label{font-size:.75rem;color:#888;font-weight:400;margin-top:2px}
+.menu-btn .menu-label{font-size:.75rem;color:var(--c-text-secondary);font-weight:400;margin-top:2px}
 .menu-btn.vp{border-top-color:#88d8b0}
 .menu-btn.ev{border-top-color:#fd9853}
 .menu-btn.panel{border-top-color:#5b8c5a}
@@ -72,7 +86,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .record-item .tipo{display:inline-block;padding:3px 10px;border-radius:5px;font-size:.75rem;font-weight:bold}
 .record-item .tipo.vp{background:#d4edda;color:#155724}
 .record-item .tipo.ev{background:#ffe5cc;color:#8a4500}
-.record-item .info{font-size:.85rem;margin-top:6px;color:#666}
+.record-item .info{font-size:.85rem;margin-top:6px;color:var(--c-text-secondary)}
 .record-item .actions{margin-top:10px;display:flex;flex-wrap:wrap;gap:5px}
 .record-item .btn-small{padding:8px 12px;font-size:.8rem;border-radius:6px;border:none;cursor:pointer}
 .record-item .btn-small.pdf{background:#9b59b6;color:#fff}
@@ -90,7 +104,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .planta-box .planta-num{background:#5b8c5a;color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:bold}
 .planta-box .notas-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
 .planta-box .nota-item{text-align:center}
-.planta-box .nota-item label{font-size:.7rem}
+.planta-box .nota-item label{font-size:var(--font-label)}
 .planta-box .nota-item select{padding:12px 4px;font-size:1.1rem;font-weight:bold;border-radius:8px}
 .palatable-box{background:#fff9f0;border-radius:8px;padding:12px;margin-bottom:12px;border-left:4px solid #fd9853}
 .palatable-box .notas-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
@@ -126,7 +140,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .camera-modal .btn-capture{width:70px;height:70px;border-radius:50%;background:#fff;border:5px solid #5b8c5a;cursor:pointer}
 .camera-modal .btn-close-cam{background:#e74c3c;color:#fff;border:none;padding:12px 24px;border-radius:8px;cursor:pointer;font-size:1rem;font-weight:bold}
 .camera-modal .camera-info{color:#fff;font-size:.9rem;text-align:center;max-width:120px}
-.nav-btn{font-size:.6rem;padding:8px 4px 6px;min-width:44px}
+.nav-btn{font-size:var(--font-xs);padding:8px 4px 6px;min-width:var(--touch-min)}
 #mapa{background:#e0e0e0}
 .mapa-marker-label{background:none!important;border:none!important;box-shadow:none!important;overflow:visible!important}
 .marker-dot{width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);position:absolute;left:-7px;top:-7px}
@@ -136,11 +150,11 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .marker-etiqueta-infra{background:rgba(142,68,173,.9);color:#fff}
 .marker-etiqueta-comp{background:rgba(231,76,60,.9);color:#fff}
 .capas-item{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#f9f9f9;border-radius:6px 6px 0 0;font-size:.85rem;flex-wrap:wrap;gap:4px}
-.capas-item button{background:#e74c3c;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:.75rem}
+.capas-item button{background:#e74c3c;color:#fff;border:none;padding:8px 12px;border-radius:4px;cursor:pointer;font-size:.75rem;min-height:var(--touch-min)}
 .capas-item .capas-actions{display:flex;gap:4px;align-items:center}
-.capas-item .capas-actions .btn-asignar{background:#8e44ad;font-size:.7rem;padding:3px 8px}
+.capas-item .capas-actions .btn-asignar{background:#8e44ad;font-size:.75rem;padding:8px 10px;min-height:var(--touch-min)}
 .capas-permisos{font-size:.7rem;color:#666;width:100%;margin-top:2px}
-.capas-permisos .badge-perm{display:inline-block;background:#e8e0f0;color:#8e44ad;padding:1px 6px;border-radius:10px;margin-right:3px;font-size:.65rem}
+.capas-permisos .badge-perm{display:inline-block;background:#e8e0f0;color:#8e44ad;padding:1px 6px;border-radius:10px;margin-right:3px;font-size:.7rem}
 .capas-permisos .badge-todos{background:#d4edda;color:#27ae60}
 .capa-bloque{margin-bottom:8px;border:1px solid #ddd;border-radius:6px;overflow:hidden}
 .capa-toggle-expand{cursor:pointer;user-select:none;flex:1;font-weight:bold;color:#1a3d2e}
@@ -157,7 +171,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .capa-tabla .col-tipo{width:50px;text-align:center}
 .capa-tabla .col-acciones{width:60px;text-align:center}
 .capa-tabla input[type="checkbox"]{width:16px;height:16px;accent-color:#1a3d2e;cursor:pointer}
-.capa-tabla .btn-zoom{background:#3498db;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:.7rem}
+.capa-tabla .btn-zoom{background:#3498db;color:#fff;border:none;padding:8px 10px;border-radius:4px;cursor:pointer;font-size:.75rem;min-height:var(--touch-min)}
 .capa-tabla .btn-zoom:active{background:#2980b9}
 .capa-estilo-controls{display:flex;gap:12px;padding:8px 10px;background:#f5f5f0;border-bottom:1px solid #ddd;flex-wrap:wrap}
 .capa-estilo-row{display:flex;align-items:center;gap:6px;flex:1;min-width:140px}
@@ -216,7 +230,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .mapa-search-float{display:none;position:fixed;top:60px;left:10px;z-index:5100;width:calc(100% - 20px);max-width:360px}
 .mapa-search-input{width:100%;padding:10px 40px 10px 14px;border:2px solid #3498db;border-radius:12px;font-size:.9rem;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.2);box-sizing:border-box;min-height:44px}
 .mapa-search-input::placeholder{color:#999}
-.mapa-search-clear{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;font-size:1.2rem;cursor:pointer;color:#999;padding:4px}
+.mapa-search-clear{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--c-text-secondary);padding:8px;min-width:var(--touch-min);min-height:var(--touch-min);display:flex;align-items:center;justify-content:center}
 .mapa-search-results{background:#fff;border-radius:10px;margin-top:4px;max-height:250px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.2);display:none}
 .mapa-search-results.show{display:block}
 .mapa-search-result{padding:12px 14px;border-bottom:1px solid #f0f0f0;cursor:pointer;font-size:.85rem;display:flex;align-items:center;gap:8px;min-height:44px}
@@ -225,7 +239,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .mapa-search-result .sr-icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:.75rem;color:#fff;flex-shrink:0}
 .mapa-search-result .sr-info{flex:1;min-width:0}
 .mapa-search-result .sr-title{font-weight:bold;color:#1a3d2e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mapa-search-result .sr-sub{font-size:.75rem;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mapa-search-result .sr-sub{font-size:.75rem;color:var(--c-text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Buscador en modo normal (no fullscreen) */
 .mapa-search-bar{position:relative;margin-top:8px}
 .mapa-search-bar .mapa-search-input{box-shadow:none;border-color:#ddd}
@@ -273,14 +287,14 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .login-overlay.hidden{display:none}
 .login-box{background:#fff;border-radius:16px;padding:30px;width:90%;max-width:360px;box-shadow:0 10px 40px rgba(0,0,0,.3)}
 .login-box h2{text-align:center;color:#1a3d2e;margin-bottom:5px;font-size:1.5rem}
-.login-box .login-sub{text-align:center;color:#888;font-size:.85rem;margin-bottom:20px}
+.login-box .login-sub{text-align:center;color:var(--c-text-secondary);font-size:.85rem;margin-bottom:20px}
 .login-box .login-error{background:#fce4ec;color:#c62828;padding:10px;border-radius:8px;margin-bottom:12px;font-size:.85rem;display:none}
 .login-box .login-error.show{display:block}
 .login-box input{margin-bottom:12px}
 .login-box .btn-login{background:linear-gradient(135deg,#1a3d2e,#2d5a3d);color:#fff;width:100%;padding:14px;border:none;border-radius:10px;font-size:1.1rem;font-weight:bold;cursor:pointer}
 .user-bar{background:rgba(255,255,255,.15);padding:4px 12px;border-radius:8px;font-size:.75rem;display:flex;align-items:center;gap:8px;margin-top:6px;justify-content:center}
 .user-bar .user-name{font-weight:bold}
-.user-bar .btn-logout{background:rgba(255,255,255,.25);border:none;color:#fff;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:.7rem}
+.user-bar .btn-logout{background:rgba(255,255,255,.25);border:none;color:#fff;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:.75rem;min-height:36px}
 .admin-only{display:none!important}
 .admin-visible .admin-only{display:block!important}
 .admin-visible select.admin-only{display:inline-block!important}
@@ -292,7 +306,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .user-card .uc-info .uc-role{font-size:.7rem;color:#fff;background:#5b8c5a;padding:1px 6px;border-radius:4px;display:inline-block;margin-top:2px}
 .user-card .uc-info .uc-role.admin{background:#e67e22}
 .user-card .uc-actions{display:flex;gap:4px;flex-shrink:0}
-.user-card .uc-actions button{padding:6px 10px;border:none;border-radius:6px;cursor:pointer;font-size:.75rem;color:#fff}
+.user-card .uc-actions button{padding:8px 12px;border:none;border-radius:6px;cursor:pointer;font-size:.75rem;color:#fff;min-height:var(--touch-min)}
 .dash-metrics{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:15px}
 .metric-card{background:#fff;border-radius:10px;padding:14px;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.1);border-top:4px solid #5b8c5a}
 .metric-card.orange{border-top-color:#fd9853}
@@ -301,7 +315,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .metric-card.purple{border-top-color:#9b59b6}
 .metric-card.green{border-top-color:#27ae60}
 .metric-card .mv{font-size:1.8rem;font-weight:bold;color:#1a3d2e}
-.metric-card .ml{font-size:.7rem;color:#666;text-transform:uppercase;margin-top:2px}
+.metric-card .ml{font-size:.75rem;color:var(--c-text-secondary);text-transform:uppercase;margin-top:2px}
 .dash-filters{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
 .dash-filters select{padding:8px;border:2px solid #ddd;border-radius:8px;font-size:.85rem;flex:1;min-width:0}
 .chart-box{background:#fff;border-radius:10px;padding:15px;box-shadow:0 2px 6px rgba(0,0,0,.1);margin-bottom:12px}
@@ -311,7 +325,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .tl-item{background:#fff;border-radius:10px;padding:14px;margin-bottom:10px;box-shadow:0 2px 4px rgba(0,0,0,.1);border-left:4px solid #5b8c5a}
 .tl-item.ev{border-left-color:#fd9853}
 .tl-item .tl-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
-.tl-item .tl-date{font-size:.75rem;color:#888}
+.tl-item .tl-date{font-size:.75rem;color:var(--c-text-secondary)}
 .tl-item .tl-body{font-size:.85rem;color:#555}
 .tl-photos{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 .tl-photos .tl-thumb{width:60px;height:80px;border-radius:6px;overflow:hidden;cursor:pointer;background:#eee;flex-shrink:0}
@@ -348,7 +362,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .gal-filtros{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
 .gal-filtros select,.gal-filtros input[type="date"]{flex:1;padding:8px;border:2px solid #ddd;border-radius:8px;font-size:.8rem;min-width:100px}
 .gal-acciones{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.gal-info{font-size:.8rem;color:#888}
+.gal-info{font-size:.8rem;color:var(--c-text-secondary)}
 .gal-btn-modo{padding:8px 16px;border:none;border-radius:8px;color:#fff;background:#1abc9c;font-size:.8rem;font-weight:bold;cursor:pointer}
 .gal-loading,.gal-empty{text-align:center;padding:40px 20px;color:#888;font-size:.9rem}
 .gal-grupo{margin-bottom:12px;border:1px solid #e0e0e0;border-radius:10px;overflow:hidden}
@@ -356,8 +370,8 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .gal-grupo.collapsed .gal-grupo-arrow{transform:rotate(-90deg)}
 .gal-grupo-header{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#f5f5f0;cursor:pointer;font-weight:bold;font-size:.85rem;color:#1a3d2e}
 .gal-grupo-header:active{background:#eee}
-.gal-grupo-count{font-weight:normal;color:#888;font-size:.75rem}
-.gal-grupo-arrow{transition:transform .2s;font-size:.7rem;color:#888}
+.gal-grupo-count{font-weight:normal;color:var(--c-text-secondary);font-size:.75rem}
+.gal-grupo-arrow{transition:transform .2s;font-size:.7rem;color:var(--c-text-secondary)}
 .gal-grupo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px}
 .gal-thumb{position:relative;cursor:pointer;border-radius:6px;overflow:hidden;aspect-ratio:3/4;background:#e8e8e8}
 .gal-thumb img{width:100%;height:100%;object-fit:cover;display:block}
@@ -396,7 +410,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .gal-lb-next{right:8px}
 /* Galería Tabs */
 .gal-tabs{display:flex;gap:4px;margin-bottom:12px;border-bottom:2px solid #eee;padding-bottom:0}
-.gal-tab{flex:1;padding:10px 8px;border:none;background:transparent;font-size:.85rem;font-weight:bold;color:#888;cursor:pointer;border-bottom:3px solid transparent;transition:all .2s}
+.gal-tab{flex:1;padding:10px 8px;border:none;background:transparent;font-size:.85rem;font-weight:bold;color:var(--c-text-secondary);cursor:pointer;border-bottom:3px solid transparent;transition:all .2s}
 .gal-tab.active{color:#e91e63;border-bottom-color:#e91e63}
 .gal-tab:active{background:#f5f5f0}
 /* Comparativas */
@@ -448,10 +462,10 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .search-result-item .sr-icon.registro{background:#e8f5e9;color:#27ae60}
 .search-result-item .sr-icon.operador{background:#e3f2fd;color:#2196f3}
 .search-result-item .sr-title{font-weight:bold;font-size:.9rem;color:#1a3d2e}
-.search-result-item .sr-sub{font-size:.75rem;color:#888}
+.search-result-item .sr-sub{font-size:.75rem;color:var(--c-text-secondary)}
 /* State indicators */
 .state-badges{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
-.state-badge{display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:10px;font-size:.65rem;font-weight:bold;color:#fff}
+.state-badge{display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:10px;font-size:.7rem;font-weight:bold;color:#fff}
 .state-badge.vp-badge{background:#88d8b0;color:#1a3d2e}
 .state-badge.el-badge{background:#2ecc71}
 .state-badge.ev-badge,.state-badge.ei-badge{background:#fd9853}
@@ -473,7 +487,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .gps-info-panel.show{display:block}
 .gps-info-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
 .gps-info-item{text-align:center}
-.gps-info-label{font-size:.6rem;color:#88d8b0;text-transform:uppercase;letter-spacing:1px}
+.gps-info-label{font-size:.7rem;color:#88d8b0;text-transform:uppercase;letter-spacing:1px}
 .gps-info-value{font-size:1.1rem;font-weight:bold;color:#fff}
 .gps-info-unit{font-size:.65rem;color:#aaa}
 /* Measurement display */
@@ -526,12 +540,12 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .mapa-fullscreen .gps-float-panel{display:flex!important}
 .gps-float-panel{display:none;position:fixed;bottom:20px;left:10px;right:10px;z-index:5100;background:rgba(26,61,46,.92);color:#fff;border-radius:12px;padding:10px 14px;font-family:'Courier New',monospace;justify-content:space-around;box-shadow:0 4px 16px rgba(0,0,0,.3)}
 .gps-float-item{text-align:center}
-.gps-float-label{font-size:.55rem;color:#88d8b0;text-transform:uppercase}
+.gps-float-label{font-size:.7rem;color:#88d8b0;text-transform:uppercase}
 .gps-float-value{font-size:.95rem;font-weight:bold}
 </style>
 </head>
 <body>
-<div class="login-overlay" id="loginOverlay">
+<div class="login-overlay" id="loginOverlay" role="dialog" aria-modal="true" aria-label="Iniciar sesión">
 <div class="login-box">
 <h2>🌿 RAPCA Campo</h2>
 <p class="login-sub">Iniciar sesión</p>
@@ -544,8 +558,8 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <p style="margin-top:4px;text-align:center"><a href="#" onclick="forzarActualizacion();return false;" style="font-size:.65rem;color:#5b8c5a">Forzar actualización</a></p>
 </div>
 </div>
-<div class="header"><h1>🌿 RAPCA Campo</h1><span class="sync-status" id="syncStatus">...</span><div class="user-bar" id="userBar" style="display:none"><span class="user-name" id="userName">--</span><span id="userRole" style="font-size:.65rem;opacity:.7">--</span><button class="btn-logout" onclick="abrirBusqueda()" style="background:rgba(255,255,255,.15);margin-right:4px">🔍</button><button class="btn-logout" onclick="cerrarSesion()">Salir</button></div></div>
-<nav class="nav"><button class="nav-btn active" onclick="showPage('menu')"><span class="nav-icon">🏠</span>Menú</button><button class="nav-btn" onclick="showPage('vp')"><span class="nav-icon">🔍</span>VP</button><button class="nav-btn" onclick="showPage('el')"><span class="nav-icon">📋</span>EL</button><button class="nav-btn" onclick="showPage('ev')"><span class="nav-icon">📊</span>EI</button><button class="nav-btn" onclick="showPage('mapa')"><span class="nav-icon">🗺️</span>Mapa</button><button class="nav-btn" onclick="showPage('ganadero')"><span class="nav-icon">🐄</span>Gan.</button><button class="nav-btn" onclick="showPage('infra')"><span class="nav-icon">🌳</span>Infra</button><button class="nav-btn" onclick="showPage('panel')"><span class="nav-icon">📂</span>Panel<span id="pendingBadge" class="pending-badge" style="display:none">0</span></button><button class="nav-btn" onclick="showPage('dashboard')"><span class="nav-icon">📈</span>Dash</button><button class="nav-btn" onclick="showPage('timeline')"><span class="nav-icon">📅</span>Hist.</button><button class="nav-btn" onclick="showPage('comparador')"><span class="nav-icon">🔄</span>Comp.</button><button class="nav-btn" onclick="showPage('galeria')"><span class="nav-icon">📸</span>Galería</button></nav>
+<div class="header"><h1>🌿 RAPCA Campo</h1><span class="sync-status" id="syncStatus">...</span><div class="user-bar" id="userBar" style="display:none"><span class="user-name" id="userName">--</span><span id="userRole" style="font-size:.65rem;opacity:.7">--</span><button class="btn-logout" onclick="abrirBusqueda()" style="background:rgba(255,255,255,.15);margin-right:4px" aria-label="Buscar">🔍</button><button class="btn-logout" onclick="cerrarSesion()" aria-label="Cerrar sesión">Salir</button></div></div>
+<nav class="nav" role="navigation" aria-label="Navegación principal"><button class="nav-btn active" onclick="showPage('menu')" aria-label="Menú principal"><span class="nav-icon" aria-hidden="true">🏠</span>Menú</button><button class="nav-btn" onclick="showPage('vp')" aria-label="Visita Previa"><span class="nav-icon" aria-hidden="true">🔍</span>VP</button><button class="nav-btn" onclick="showPage('el')" aria-label="Evaluación Ligera"><span class="nav-icon" aria-hidden="true">📋</span>EL</button><button class="nav-btn" onclick="showPage('ev')" aria-label="Evaluación Intensa"><span class="nav-icon" aria-hidden="true">📊</span>EI</button><button class="nav-btn" onclick="showPage('mapa')" aria-label="Mapa"><span class="nav-icon" aria-hidden="true">🗺️</span>Mapa</button><button class="nav-btn" onclick="showPage('ganadero')" aria-label="Ganaderos"><span class="nav-icon" aria-hidden="true">🐄</span>Gan.</button><button class="nav-btn" onclick="showPage('infra')" aria-label="Infraestructuras"><span class="nav-icon" aria-hidden="true">🌳</span>Infra</button><button class="nav-btn" onclick="showPage('panel')" aria-label="Panel de registros"><span class="nav-icon" aria-hidden="true">📂</span>Panel<span id="pendingBadge" class="pending-badge" style="display:none">0</span></button><button class="nav-btn" onclick="showPage('dashboard')" aria-label="Dashboard"><span class="nav-icon" aria-hidden="true">📈</span>Dash</button><button class="nav-btn" onclick="showPage('timeline')" aria-label="Historial"><span class="nav-icon" aria-hidden="true">📅</span>Hist.</button><button class="nav-btn" onclick="showPage('comparador')" aria-label="Comparador"><span class="nav-icon" aria-hidden="true">🔄</span>Comp.</button><button class="nav-btn" onclick="showPage('galeria')" aria-label="Galería"><span class="nav-icon" aria-hidden="true">📸</span>Galería</button></nav>
 
 <div id="page-menu" class="page active"><div style="max-width:500px;margin:20px auto"><button id="installBtn" class="menu-btn" style="display:none;background:#27ae60;color:#fff;border-top:4px solid #1e8449;grid-column:1/-1" onclick="instalarApp()"><span class="menu-icon">📲</span>Instalar App</button>
 <p style="font-size:.7rem;font-weight:bold;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding-left:4px">Trabajo de campo</p>
@@ -581,7 +595,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <div class="card admin-only">
 <div class="card-title" onclick="toggleSection('admin-registros-section')"><span>📊 Registros del Servidor</span><span style="font-size:.75rem;color:#666">▼</span></div>
 <div class="section-content" id="admin-registros-section">
-<div class="form-group"><label>Filtrar por operador</label><select id="admin-filtro-email" onchange="cargarRegistrosServidor()"><option value="">-- Todos --</option></select></div>
+<div class="form-group"><label>Filtrar por operador</label><select id="admin-filtro-email" onchange="cargarRegistrosServidor()" aria-label="Filtrar por operador"><option value="">-- Todos --</option></select></div>
 <div id="listaRegistrosServidor" style="margin-top:10px"></div>
 </div>
 </div>
@@ -671,36 +685,36 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <div id="mapa-pdf-panel" style="display:none;margin-top:8px;padding:12px;background:#f8f4ff;border:2px solid #8e44ad;border-radius:10px">
 <div style="font-weight:bold;color:#8e44ad;margin-bottom:8px">📄 Exportar Mapa PDF</div>
 <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-<select id="mapa-pdf-unidad" style="flex:1;min-width:150px;padding:8px;border:2px solid #8e44ad;border-radius:8px;font-size:.85rem"><option value="">Selecciona unidad...</option></select>
+<select id="mapa-pdf-unidad" style="flex:1;min-width:150px;padding:8px;border:2px solid #8e44ad;border-radius:8px;font-size:.85rem" aria-label="Seleccionar unidad para PDF"><option value="">Selecciona unidad...</option></select>
 <button class="btn-camera" style="background:#9b59b6;margin:0;font-size:.85rem" onclick="exportarMapaUnidadPDF()">Generar PDF</button>
 <button class="btn-camera" style="background:#999;margin:0;font-size:.85rem" onclick="document.getElementById('mapa-pdf-panel').style.display='none'">Cancelar</button>
 </div>
 </div>
 <div class="map-filters">
-<select id="mapa-filtro-tipo" onchange="actualizarMarcadoresMapa()"><option value="">Tipo</option><option value="VP">VP</option><option value="EL">EL</option><option value="EI">EI</option><option value="infra">Infra</option></select>
-<select id="mapa-filtro-operador" onchange="actualizarMarcadoresMapa()" class="admin-only"><option value="">Operador</option></select>
+<select id="mapa-filtro-tipo" onchange="actualizarMarcadoresMapa()" aria-label="Filtrar por tipo"><option value="">Tipo</option><option value="VP">VP</option><option value="EL">EL</option><option value="EI">EI</option><option value="infra">Infra</option></select>
+<select id="mapa-filtro-operador" onchange="actualizarMarcadoresMapa()" class="admin-only" aria-label="Filtrar por operador"><option value="">Operador</option></select>
 </div>
 <div class="mapa-search-bar">
-<input type="text" class="mapa-search-input" id="mapa-search-normal" placeholder="Buscar por ID Unidad (ej: 23AJE01)..." oninput="buscarUnidadEnMapa(this.value,'mapa-search-results-normal')" onfocus="if(this.value)buscarUnidadEnMapa(this.value,'mapa-search-results-normal')">
-<button class="mapa-search-clear" onclick="document.getElementById('mapa-search-normal').value='';document.getElementById('mapa-search-results-normal').classList.remove('show')">✕</button>
+<input type="text" class="mapa-search-input" id="mapa-search-normal" aria-label="Buscar por ID Unidad" placeholder="Buscar por ID Unidad (ej: 23AJE01)..." oninput="buscarUnidadEnMapa(this.value,'mapa-search-results-normal')" onfocus="if(this.value)buscarUnidadEnMapa(this.value,'mapa-search-results-normal')">
+<button class="mapa-search-clear" onclick="document.getElementById('mapa-search-normal').value='';document.getElementById('mapa-search-results-normal').classList.remove('show')" aria-label="Limpiar búsqueda">✕</button>
 <div class="mapa-search-results" id="mapa-search-results-normal"></div>
 </div>
 </div>
 <div id="mapa" style="height:calc(100vh - 340px);min-height:350px;border-radius:10px;overflow:hidden;box-shadow:0 2px 6px rgba(0,0,0,.15)"></div>
 <!-- Toolbar flotante para fullscreen -->
 <div class="mapa-toolbar-float" id="mapa-toolbar-float">
-<button class="btn-exit-fs" onclick="toggleMapaFullscreen()">✕</button>
-<button class="btn-fs-action" onclick="centrarEnMiPosicion()">📍</button>
-<select id="mapa-filtro-tipo-fs" onchange="document.getElementById('mapa-filtro-tipo').value=this.value;actualizarMarcadoresMapa()" style="color:#333"><option value="">Tipo</option><option value="VP">VP</option><option value="EL">EL</option><option value="EI">EI</option><option value="infra">Infra</option></select>
-<button class="btn-fs-action" onclick="toggleMapaSearchFS()">🔍</button>
-<button class="btn-fs-action" onclick="toggleMedicion()" style="background:#3498db">📏</button>
-<button class="btn-fs-action" onclick="crearWaypoint()" style="background:#8e44ad">📌</button>
+<button class="btn-exit-fs" onclick="toggleMapaFullscreen()" aria-label="Salir de pantalla completa">✕</button>
+<button class="btn-fs-action" onclick="centrarEnMiPosicion()" aria-label="Mi posición">📍</button>
+<select id="mapa-filtro-tipo-fs" onchange="document.getElementById('mapa-filtro-tipo').value=this.value;actualizarMarcadoresMapa()" style="color:#333" aria-label="Filtrar por tipo"><option value="">Tipo</option><option value="VP">VP</option><option value="EL">EL</option><option value="EI">EI</option><option value="infra">Infra</option></select>
+<button class="btn-fs-action" onclick="toggleMapaSearchFS()" aria-label="Buscar en mapa">🔍</button>
+<button class="btn-fs-action" onclick="toggleMedicion()" style="background:#3498db" aria-label="Medir distancia">📏</button>
+<button class="btn-fs-action" onclick="crearWaypoint()" style="background:#8e44ad" aria-label="Crear waypoint">📌</button>
 </div>
 <!-- Buscador flotante para fullscreen -->
 <div class="mapa-search-float" id="mapa-search-float">
 <div style="position:relative">
-<input type="text" class="mapa-search-input" id="mapa-search-fs" placeholder="Buscar por ID Unidad (ej: 23AJE01)..." oninput="buscarUnidadEnMapa(this.value,'mapa-search-results-fs')" onfocus="if(this.value)buscarUnidadEnMapa(this.value,'mapa-search-results-fs')">
-<button class="mapa-search-clear" onclick="document.getElementById('mapa-search-fs').value='';document.getElementById('mapa-search-results-fs').classList.remove('show');document.getElementById('mapa-search-float').style.display='none'">✕</button>
+<input type="text" class="mapa-search-input" id="mapa-search-fs" aria-label="Buscar por ID Unidad" placeholder="Buscar por ID Unidad (ej: 23AJE01)..." oninput="buscarUnidadEnMapa(this.value,'mapa-search-results-fs')" onfocus="if(this.value)buscarUnidadEnMapa(this.value,'mapa-search-results-fs')">
+<button class="mapa-search-clear" onclick="document.getElementById('mapa-search-fs').value='';document.getElementById('mapa-search-results-fs').classList.remove('show');document.getElementById('mapa-search-float').style.display='none'" aria-label="Limpiar búsqueda">✕</button>
 <div class="mapa-search-results" id="mapa-search-results-fs"></div>
 </div>
 </div>
@@ -713,7 +727,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <div class="gps-float-item"><div class="gps-float-label">UTM</div><div class="gps-float-value" id="gps-f-utm" style="font-size:.7rem">--</div></div>
 </div>
 <!-- Waypoint form modal -->
-<div class="wp-form-overlay" id="wp-form-overlay">
+<div class="wp-form-overlay" id="wp-form-overlay" role="dialog" aria-modal="true" aria-label="Nuevo waypoint">
 <div class="wp-form">
 <h3>📌 Nuevo Waypoint</h3>
 <input type="text" id="wp-nombre" placeholder="Nombre del waypoint">
@@ -726,17 +740,17 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 </div>
 </div>
 <!-- Tabla de atributos (QGIS-style) -->
-<div class="attr-table-overlay" id="attr-table-overlay" onclick="if(event.target===this)cerrarTablaAtributos()">
+<div class="attr-table-overlay" id="attr-table-overlay" role="dialog" aria-modal="true" aria-label="Tabla de atributos" onclick="if(event.target===this)cerrarTablaAtributos()">
 <div class="attr-table-panel">
 <div class="attr-table-header">
 <h3 id="attr-table-titulo">Tabla de atributos</h3>
 <div class="attr-actions">
 <button onclick="exportarTablaCSV()">📤 CSV</button>
-<button onclick="cerrarTablaAtributos()">✕</button>
+<button onclick="cerrarTablaAtributos()" aria-label="Cerrar tabla">✕</button>
 </div>
 </div>
 <div class="attr-table-toolbar">
-<input type="text" id="attr-table-buscar" placeholder="Filtrar atributos..." oninput="filtrarTablaAtributos()">
+<input type="text" id="attr-table-buscar" placeholder="Filtrar atributos..." oninput="filtrarTablaAtributos()" aria-label="Filtrar atributos">
 <span class="attr-count" id="attr-table-count">0 elementos</span>
 </div>
 <div class="attr-table-wrap">
@@ -748,7 +762,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 </div>
 </div>
 <!-- Modal asignar operadores a capa KML -->
-<div class="modal-capas-overlay" id="modal-capas-perm">
+<div class="modal-capas-overlay" id="modal-capas-perm" role="dialog" aria-modal="true" aria-label="Asignar operadores">
 <div class="modal-capas">
 <div class="modal-capas-header"><h3 id="modal-capas-titulo">Asignar operadores</h3><button onclick="cerrarModalCapasPerm()">✕</button></div>
 <div class="modal-capas-body" id="modal-capas-body"></div>
@@ -770,7 +784,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <button class="btn" style="background:#27ae60;color:#fff" onclick="guardarGanadero()">💾 Guardar Ganadero</button>
 <button class="btn btn-exit" onclick="limpiarFormGanadero()">🗑️ Limpiar</button>
 </div>
-<div class="card"><div class="card-title">📋 Listado de Ganaderos (<span id="ganaderoCount">0</span>)</div><input type="text" id="gan-buscar" placeholder="🔍 Buscar..." oninput="cargarListaGanaderos()" style="margin-bottom:10px"><div id="ganaderoList"></div></div>
+<div class="card"><div class="card-title">📋 Listado de Ganaderos (<span id="ganaderoCount">0</span>)</div><input type="text" id="gan-buscar" placeholder="🔍 Buscar..." oninput="cargarListaGanaderos()" style="margin-bottom:10px" aria-label="Buscar ganaderos"><div id="ganaderoList"></div></div>
 </div>
 
 <div id="page-infra" class="page">
@@ -794,18 +808,18 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <button class="btn" style="background:#27ae60;color:#fff" onclick="guardarInfra()">💾 Guardar</button>
 <button class="btn btn-exit" onclick="limpiarFormInfra()">🗑️ Limpiar</button>
 </div></div>
-<div class="card"><div class="card-title">📋 Listado (<span id="infraCount">0</span>)</div><input type="text" id="inf-buscar" placeholder="🔍 Buscar..." oninput="cargarListaInfra()" style="margin-bottom:10px"><div id="infraList"></div></div>
+<div class="card"><div class="card-title">📋 Listado (<span id="infraCount">0</span>)</div><input type="text" id="inf-buscar" placeholder="🔍 Buscar..." oninput="cargarListaInfra()" style="margin-bottom:10px" aria-label="Buscar infraestructuras"><div id="infraList"></div></div>
 </div>
 
 <div id="page-panel" class="page"><div class="card"><div class="card-title">📋 Registros Guardados</div><button class="btn btn-secondary" onclick="syncPending()">🔄 Sincronizar</button><button class="btn" style="background:#9b59b6;color:#fff" onclick="exportarTodosPDF()">📄 Exportar PDF</button><div id="panelList" style="margin-top:15px"></div></div><div class="card"><button class="btn btn-danger" onclick="borrarTodo()">🗑️ Borrar todo</button></div></div>
 
 <div id="page-dashboard" class="page">
 <div class="dash-filters">
-<select id="dash-filtro-zona" onchange="actualizarDashboard()"><option value="">Zona</option></select>
-<select id="dash-filtro-usuario" onchange="actualizarDashboard()" class="admin-only"><option value="">Operador</option></select>
-<select id="dash-filtro-provincia" onchange="actualizarDashboard()"><option value="">Provincia</option></select>
-<select id="dash-filtro-municipio" onchange="actualizarDashboard()"><option value="">Municipio</option></select>
-<select id="dash-filtro-pn" onchange="actualizarDashboard()"><option value="">PN</option></select>
+<select id="dash-filtro-zona" onchange="actualizarDashboard()" aria-label="Filtrar por zona"><option value="">Zona</option></select>
+<select id="dash-filtro-usuario" onchange="actualizarDashboard()" class="admin-only" aria-label="Filtrar por operador"><option value="">Operador</option></select>
+<select id="dash-filtro-provincia" onchange="actualizarDashboard()" aria-label="Filtrar por provincia"><option value="">Provincia</option></select>
+<select id="dash-filtro-municipio" onchange="actualizarDashboard()" aria-label="Filtrar por municipio"><option value="">Municipio</option></select>
+<select id="dash-filtro-pn" onchange="actualizarDashboard()" aria-label="Filtrar por parque natural"><option value="">PN</option></select>
 </div>
 <div class="dash-metrics" id="dashMetrics"></div>
 <div class="chart-box"><canvas id="chartActividad"></canvas></div>
@@ -816,11 +830,11 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <div id="page-timeline" class="page">
 <div class="card"><div class="card-title">📅 Historial de Inspecciones</div>
 <div class="tl-filters">
-<select id="tl-filtro-operador" onchange="actualizarTimeline()" class="admin-only"><option value="">Operador</option></select>
-<select id="tl-filtro-unidad" onchange="actualizarTimeline()"><option value="">Unidad</option></select>
-<select id="tl-filtro-tipo" onchange="actualizarTimeline()"><option value="">Tipo</option><option value="VP">VP</option><option value="EL">EL</option><option value="EI">EI</option></select>
-<input type="date" id="tl-desde" onchange="actualizarTimeline()" style="min-width:130px">
-<input type="date" id="tl-hasta" onchange="actualizarTimeline()" style="min-width:130px">
+<select id="tl-filtro-operador" onchange="actualizarTimeline()" class="admin-only" aria-label="Filtrar por operador"><option value="">Operador</option></select>
+<select id="tl-filtro-unidad" onchange="actualizarTimeline()" aria-label="Filtrar por unidad"><option value="">Unidad</option></select>
+<select id="tl-filtro-tipo" onchange="actualizarTimeline()" aria-label="Filtrar por tipo"><option value="">Tipo</option><option value="VP">VP</option><option value="EL">EL</option><option value="EI">EI</option></select>
+<input type="date" id="tl-desde" onchange="actualizarTimeline()" style="min-width:130px" aria-label="Fecha desde">
+<input type="date" id="tl-hasta" onchange="actualizarTimeline()" style="min-width:130px" aria-label="Fecha hasta">
 </div>
 <div id="timelineList"></div>
 </div>
@@ -838,10 +852,10 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <div id="gal-vista-galeria">
 <div class="gal-toolbar">
 <div class="gal-filtros">
-<select id="gal-filtro-unidad" onchange="cargarFotosGaleria(true)"><option value="">Todas las unidades</option></select>
-<select id="gal-filtro-tipo" onchange="cargarFotosGaleria(true)"><option value="">Todos los tipos</option></select>
-<input type="date" id="gal-filtro-desde" onchange="cargarFotosGaleria(true)" title="Desde">
-<input type="date" id="gal-filtro-hasta" onchange="cargarFotosGaleria(true)" title="Hasta">
+<select id="gal-filtro-unidad" onchange="cargarFotosGaleria(true)" aria-label="Filtrar por unidad"><option value="">Todas las unidades</option></select>
+<select id="gal-filtro-tipo" onchange="cargarFotosGaleria(true)" aria-label="Filtrar por tipo"><option value="">Todos los tipos</option></select>
+<input type="date" id="gal-filtro-desde" onchange="cargarFotosGaleria(true)" title="Desde" aria-label="Fecha desde">
+<input type="date" id="gal-filtro-hasta" onchange="cargarFotosGaleria(true)" title="Hasta" aria-label="Fecha hasta">
 </div>
 <div class="gal-acciones">
 <span class="gal-info" id="gal-info">--</span>
@@ -854,7 +868,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 
 <div id="gal-vista-comparativas" style="display:none">
 <div class="gal-filtros" style="margin-bottom:12px">
-<select id="gal-comp-unidad" onchange="cargarComparativas()"><option value="">Selecciona unidad</option></select>
+<select id="gal-comp-unidad" onchange="cargarComparativas()" aria-label="Seleccionar unidad comparativa"><option value="">Selecciona unidad</option></select>
 </div>
 <div id="gal-comp-slider-result" style="display:none"></div>
 <div id="gal-comp-result"></div>
@@ -863,7 +877,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <div id="gal-vista-precache" style="display:none">
 <div class="gal-precache-desc">Descarga fotos comparativas antes de ir al campo. Se borran automáticamente a los 3 días.</div>
 <div class="gal-filtros" style="margin-bottom:12px">
-<select id="gal-precache-unidad"><option value="">Selecciona unidad</option></select>
+<select id="gal-precache-unidad" aria-label="Seleccionar unidad para pre-caché"><option value="">Selecciona unidad</option></select>
 <button class="gal-btn-precache" onclick="precachearUnidad()">Descargar</button>
 </div>
 <div id="gal-precache-progress" class="gal-precache-progress" style="display:none">
@@ -876,7 +890,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 </div>
 </div>
 
-<div class="galeria-lightbox" id="galeriaLightbox">
+<div class="galeria-lightbox" id="galeriaLightbox" role="dialog" aria-modal="true" aria-label="Visor de fotos">
 <div class="gal-lb-header">
 <span class="gal-lb-info" id="galLbInfo">--</span>
 <div class="gal-lb-actions">
@@ -884,17 +898,17 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <button onclick="cerrarLightboxGaleria()" title="Cerrar">✕</button>
 </div>
 </div>
-<button class="gal-lb-nav gal-lb-prev" onclick="navLightboxGaleria(-1)">◀</button>
+<button class="gal-lb-nav gal-lb-prev" onclick="navLightboxGaleria(-1)" aria-label="Foto anterior">◀</button>
 <img id="galLbImg" src="" alt="Foto">
-<button class="gal-lb-nav gal-lb-next" onclick="navLightboxGaleria(1)">▶</button>
+<button class="gal-lb-nav gal-lb-next" onclick="navLightboxGaleria(1)" aria-label="Foto siguiente">▶</button>
 </div>
 
 <div id="page-comparador" class="page">
 <div class="card"><div class="card-title">🔄 Comparador de Fotos</div>
 <div class="comp-selector">
-<select id="comp-unidad" onchange="cargarFechasComparador()"><option value="">Selecciona Unidad</option></select>
-<select id="comp-fecha1" onchange="cargarFotosComparador()"><option value="">Fecha A</option></select>
-<select id="comp-fecha2" onchange="cargarFotosComparador()"><option value="">Fecha B</option></select>
+<select id="comp-unidad" onchange="cargarFechasComparador()" aria-label="Seleccionar unidad"><option value="">Selecciona Unidad</option></select>
+<select id="comp-fecha1" onchange="cargarFotosComparador()" aria-label="Fecha A"><option value="">Fecha A</option></select>
+<select id="comp-fecha2" onchange="cargarFotosComparador()" aria-label="Fecha B"><option value="">Fecha B</option></select>
 </div>
 <div class="comp-mode">
 <button class="active" onclick="setModoComparador('slider')">Slider</button>
@@ -904,7 +918,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 </div>
 </div>
 
-<div class="camera-modal" id="cameraModal">
+<div class="camera-modal" id="cameraModal" role="dialog" aria-modal="true" aria-label="Cámara">
 <div class="camera-container">
 <video id="cameraVideo" autoplay playsinline></video>
 <div class="camera-overlay">
@@ -916,11 +930,11 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <div class="camera-controls">
 <button class="btn-close-cam" onclick="cerrarCamara()">✖ Cancelar</button>
 <div class="camera-info" id="cameraInfo">--</div>
-<button class="btn-capture" id="btnCapture" onclick="capturarFoto()"></button>
+<button class="btn-capture" id="btnCapture" onclick="capturarFoto()" aria-label="Capturar foto"></button>
 </div>
 </div>
 <canvas id="photoCanvas" style="display:none"></canvas>
-<div class="preview-modal" id="previewModal">
+<div class="preview-modal" id="previewModal" role="dialog" aria-modal="true" aria-label="Vista previa de foto">
 <div class="preview-container" id="previewContainer"><canvas id="previewCanvas"></canvas></div>
 <div class="preview-tools" id="previewTools">
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><label style="color:#fff;font-size:.8rem;white-space:nowrap">Tamaño:</label><input type="range" id="circleSize" min="80" max="600" value="200" oninput="document.getElementById('circleSizeLabel').textContent=this.value" style="flex:1"><span id="circleSizeLabel" style="color:#fff;font-size:.8rem;min-width:30px">200</span></div>
