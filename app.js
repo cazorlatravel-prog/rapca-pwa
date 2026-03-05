@@ -2358,15 +2358,25 @@ function initApp(){
   // Escuchar actualizaciones del Service Worker
   if(navigator.serviceWorker){
     navigator.serviceWorker.addEventListener('message',function(e){
-      if(e.data&&e.data.type==='SW_UPDATED'){
-        showToast('App actualizada ('+e.data.version+'). Tus datos están seguros.','success');
+      if(!e.data)return;
+      if(e.data.type==='SW_UPDATED'){
+        showToast('App actualizada ('+e.data.version+'). Recarga para aplicar cambios.','success');
+      }
+      if(e.data.type==='SYNC_REGISTROS'){
+        console.log('Background Sync: sincronizando registros');
+        syncPending();
+      }
+      if(e.data.type==='SYNC_FOTOS'){
+        console.log('Background Sync: sincronizando fotos');
+        procesarSubidasPendientes();
       }
     });
   }
   var t=new Date().toISOString().split('T')[0];document.getElementById('vp-fecha').value=t;document.getElementById('ev-fecha').value=t;document.getElementById('el-fecha').value=t;
   var cVP=localStorage.getItem('rapca_contadores_VP'),cEI=localStorage.getItem('rapca_contadores_EI'),cEV=localStorage.getItem('rapca_contadores_EV'),cEL=localStorage.getItem('rapca_contadores_EL');if(cVP)contadorFotosVP=JSON.parse(cVP);if(cEI)contadorFotosEV=JSON.parse(cEI);else if(cEV)contadorFotosEV=JSON.parse(cEV);if(cEL)contadorFotosEL=JSON.parse(cEL);
   generarPlantas();generarPalatables();generarHerbaceas();updateSyncStatus();updatePendingCount();loadPanel();cargarBorradores();iniciarGeolocalizacion();initPreviewListeners();initCamposExtra();
-  window.addEventListener('online',function(){isOnline=true;updateSyncStatus();procesarSubidasPendientes();});window.addEventListener('offline',function(){isOnline=false;updateSyncStatus();});
+  window.addEventListener('online',function(){isOnline=true;updateSyncStatus();syncPending();procesarSubidasPendientes();});
+  window.addEventListener('offline',function(){isOnline=false;updateSyncStatus();registrarBackgroundSync();});
   document.addEventListener('click',function(e){if(!e.target.closest('.autocomplete-wrapper'))document.querySelectorAll('.autocomplete-list').forEach(function(l){l.classList.remove('show');});if(!e.target.closest('.mapa-search-bar')&&!e.target.closest('.mapa-search-float')){document.querySelectorAll('.mapa-search-results').forEach(function(r){r.classList.remove('show');});}});
   if(window.matchMedia('(display-mode: standalone)').matches){var b=document.getElementById('installBtn');if(b)b.style.display='none';}
   // Cargar listas de admin si es admin
@@ -2409,9 +2419,24 @@ function guardarVP(){var z=document.getElementById('vp-zona').value.trim(),u=doc
 function guardarEV(){var z=document.getElementById('ev-zona').value.trim(),u=document.getElementById('ev-unidad').value.trim();if(!z||!u){showToast('Zona y Unidad obligatorios','error');return;}var pl=[];for(var i=1;i<=10;i++){var nt=[],c=0,s=0;for(var n=1;n<=10;n++){var v=document.getElementById('ev-planta'+i+'-n'+n).value;nt.push(v);if(v!==''){c++;s+=parseInt(v);}}pl.push({nombre:document.getElementById('ev-planta'+i).value,notas:nt,media:c>0?(s/c).toFixed(2):''});}var pa=[],paTC=0,paTS=0;for(var i=1;i<=3;i++){var nt=[],c=0,s=0;for(var n=1;n<=15;n++){var v=document.getElementById('ev-palatable'+i+'-n'+n).value;nt.push(v);if(v!==''){c++;s+=parseInt(v);paTC++;paTS+=parseInt(v);}}pa.push({nombre:document.getElementById('ev-palatable'+i).value,notas:nt,media:c>0?(s/c).toFixed(2):''});}var hb=[];for(var i=1;i<=7;i++)hb.push(document.getElementById('ev-herb'+i).value);var c1=parseFloat(document.getElementById('ev-mat1cob').value)||0,c2=parseFloat(document.getElementById('ev-mat2cob').value)||0,a1=parseFloat(document.getElementById('ev-mat1alt').value)||0,a2=parseFloat(document.getElementById('ev-mat2alt').value)||0;var nC=(document.getElementById('ev-mat1cob').value!==''?1:0)+(document.getElementById('ev-mat2cob').value!==''?1:0),nA=(document.getElementById('ev-mat1alt').value!==''?1:0)+(document.getElementById('ev-mat2alt').value!==''?1:0);var mediaCob=nC>0?((c1+c2)/nC).toFixed(1):'',mediaAlt=nA>0?((a1+a2)/nA).toFixed(1):'',volumen=calcularVolumenMatorral(parseFloat(mediaCob),parseFloat(mediaAlt))||'';var pC=0,pS=0;for(var i=1;i<=10;i++)for(var n=1;n<=10;n++){var v=document.getElementById('ev-planta'+i+'-n'+n).value;if(v!==''){pC++;pS+=parseInt(v);}}var hC=0,hS=0;for(var i=1;i<=7;i++){var v=document.getElementById('ev-herb'+i).value;if(v!==''){hC++;hS+=parseInt(v);}}var d={plantas:pl,plantasMedia:pC>0?(pS/pC).toFixed(2):'',palatables:pa,palatablesMedia:paTC>0?(paTS/paTC).toFixed(2):'',pastoreo:[document.getElementById('ev-past1').value,document.getElementById('ev-past2').value,document.getElementById('ev-past3').value],herbaceas:hb,herbaceasMedia:hC>0?(hS/hC).toFixed(2):'',matorral:{punto1:{cobertura:document.getElementById('ev-mat1cob').value,altura:document.getElementById('ev-mat1alt').value,especie:document.getElementById('ev-mat1esp').value},punto2:{cobertura:document.getElementById('ev-mat2cob').value,altura:document.getElementById('ev-mat2alt').value,especie:document.getElementById('ev-mat2esp').value},mediaCob:mediaCob,mediaAlt:mediaAlt,volumen:volumen},fotos:document.getElementById('ev-fotos').value,fotosComp:[{numero:document.getElementById('ev-fc1').value,waypoint:'W1'},{numero:document.getElementById('ev-fc2').value,waypoint:'W2'}],observaciones:document.getElementById('ev-obs').value};var r={id:editandoId||Date.now(),tipo:'EI',fecha:document.getElementById('ev-fecha').value,zona:z,unidad:u,transecto:'T'+transectoActual,datos:d,enviado:false,lat:currentLat,lon:currentLon};if(sesionActual){r.operador_email=sesionActual.email;r.operador_nombre=sesionActual.nombre;}if(editandoId){actualizarRegistro(r);editandoId=null;}else guardarLocal(r);showToast('EI T'+transectoActual+' guardado','success');if(transectoActual>=3){limpiarFormularioEV(true);showToast('Unidad completada','info');}else{limpiarFormularioEV(false);setTransecto(transectoActual+1);}if(isOnline){enviarRegistro(r);sincronizarRegistroServidor(r);}}
 function getRegistros(){return safeJSONParse(localStorage.getItem('rapca_registros'),[]);}
 function getRegistrosUsuario(){var rs=getRegistros();if(sesionActual&&sesionActual.rol!=='admin'){rs=rs.filter(function(r){return r.operador_email===sesionActual.email;});}return rs;}
-function guardarLocal(r){var rs=getRegistros();rs.push(r);try{localStorage.setItem('rapca_registros',JSON.stringify(rs));}catch(e){console.error('Error guardando registro:',e);showToast('Error: almacenamiento lleno. Libere espacio.','error');return;}updatePendingCount();if(mapaLeaflet)construirCapaComparativas();}
+function guardarLocal(r){var rs=getRegistros();rs.push(r);try{localStorage.setItem('rapca_registros',JSON.stringify(rs));}catch(e){console.error('Error guardando registro:',e);showToast('Error: almacenamiento lleno. Libere espacio.','error');return;}updatePendingCount();if(mapaLeaflet)construirCapaComparativas();if(!isOnline)registrarBackgroundSync();}
 function actualizarRegistro(r){var rs=getRegistros();for(var i=0;i<rs.length;i++)if(rs[i].id===r.id){rs[i]=r;break;}localStorage.setItem('rapca_registros',JSON.stringify(rs));updatePendingCount();loadPanel();if(mapaLeaflet)construirCapaComparativas();}
 function marcarEnviado(id){var rs=getRegistros();for(var i=0;i<rs.length;i++)if(rs[i].id===id){rs[i].enviado=true;break;}localStorage.setItem('rapca_registros',JSON.stringify(rs));updatePendingCount();loadPanel();}
+function registrarBackgroundSync(){
+  if(!('serviceWorker' in navigator)||!('SyncManager' in window))return;
+  navigator.serviceWorker.ready.then(function(reg){
+    var rs=getRegistrosUsuario(),pend=rs.filter(function(x){return!x.enviado;});
+    if(pend.length>0)reg.sync.register('sync-registros').catch(function(){});
+    // Verificar si hay fotos pendientes
+    if(fotosDB){
+      try{
+        var tx=fotosDB.transaction(['subidas_pendientes'],'readonly');
+        var req=tx.objectStore('subidas_pendientes').count();
+        req.onsuccess=function(){if(req.result>0)reg.sync.register('sync-fotos').catch(function(){});};
+      }catch(e){}
+    }
+  });
+}
 function updatePendingCount(){var rs=getRegistrosUsuario(),p=rs.filter(function(x){return!x.enviado;}).length;document.getElementById('pendingCount').textContent=p;var b=document.getElementById('pendingBadge');b.style.display=p>0?'inline':'none';b.textContent=p;}
 function enviarRegistro(r){showLoading(true);var fd=new URLSearchParams();fd.append(ENTRY.tipo,r.tipo);fd.append(ENTRY.fecha,r.fecha);fd.append(ENTRY.zona,r.zona);fd.append(ENTRY.unidad,r.unidad);fd.append(ENTRY.transecto,r.transecto||'');fd.append(ENTRY.datos,JSON.stringify(r.datos));fetch(FORM_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:fd.toString()}).then(function(){showLoading(false);marcarEnviado(r.id);showToast('Enviado','success');}).catch(function(){showLoading(false);showToast('Guardado local','info');});}
 function syncPending(){var pend=getRegistrosUsuario().filter(function(r){return!r.enviado;});if(pend.length===0){showToast('Sin pendientes','info');return;}if(!isOnline){showToast('Sin conexión','error');return;}showLoading(true);var total=pend.length,env=0;pend.forEach(function(r,idx){setTimeout(function(){var fd=new URLSearchParams();fd.append(ENTRY.tipo,r.tipo);fd.append(ENTRY.fecha,r.fecha);fd.append(ENTRY.zona,r.zona);fd.append(ENTRY.unidad,r.unidad);fd.append(ENTRY.transecto,r.transecto||'');fd.append(ENTRY.datos,JSON.stringify(r.datos));fetch(FORM_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:fd.toString()}).then(function(){marcarEnviado(r.id);sincronizarRegistroServidor(r);env++;if(env===total){showLoading(false);showToast(total+' sincronizados','success');}}).catch(function(){env++;if(env===total)showLoading(false);});},idx*600);});}
