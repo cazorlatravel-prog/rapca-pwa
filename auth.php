@@ -30,7 +30,9 @@ try {
         password VARCHAR(255) NOT NULL,
         rol ENUM('admin','operador') DEFAULT 'operador',
         activo TINYINT(1) DEFAULT 1,
-        fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP
+        ultimo_login DATETIME DEFAULT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
     try {
@@ -121,6 +123,7 @@ switch ($action) {
         }
         $token = generarToken();
         $pdo->prepare("INSERT INTO sesiones (usuario_id, token) VALUES (?, ?)")->execute([$user['id'], $token]);
+        try { $pdo->prepare("UPDATE usuarios SET ultimo_login = NOW() WHERE id = ?")->execute([$user['id']]); } catch (PDOException $e) { /* columna puede no existir */ }
         echo json_encode([
             'ok' => true,
             'token' => $token,
@@ -187,7 +190,14 @@ switch ($action) {
             echo json_encode(['error' => 'Sin permisos de administrador']);
             exit;
         }
-        $stmt = $pdo->query("SELECT id, email, nombre, rol, activo, fecha_creacion FROM usuarios ORDER BY fecha_creacion");
+        // Compatible con ambas versiones de esquema (fecha_creacion o created_at)
+        try {
+            $cols = $pdo->query("SHOW COLUMNS FROM usuarios")->fetchAll(PDO::FETCH_COLUMN);
+            $dateCol = in_array('created_at', $cols) ? 'created_at' : (in_array('fecha_creacion', $cols) ? 'fecha_creacion' : 'id');
+            $stmt = $pdo->query("SELECT id, email, nombre, rol, activo FROM usuarios ORDER BY " . $dateCol);
+        } catch (PDOException $e) {
+            $stmt = $pdo->query("SELECT id, email, nombre, rol, activo FROM usuarios ORDER BY id");
+        }
         echo json_encode(['ok' => true, 'usuarios' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
         break;
 
