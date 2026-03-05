@@ -1993,13 +1993,20 @@ function cargarListaUsuarios(){
     .then(function(r){return r.json();})
     .then(function(data){
       if(data.ok){
-        // Actualizar caché local con datos del servidor
-        guardarUsuariosLocal(data.usuarios.map(function(u){
-          // Mantener password local si existe (el servidor no la devuelve)
-          var local=getUsuariosLocal().find(function(l){return l.email===u.email;});
-          return{id:u.id,email:u.email,nombre:u.nombre,rol:u.rol,activo:u.activo,password:local?local.password:''};
-        }));
-        renderUsuarios(data.usuarios);
+        // Fusionar servidor + locales (mantener usuarios que solo existen localmente)
+        var locales=getUsuariosLocal();
+        var merged=data.usuarios.map(function(u){
+          var local=locales.find(function(l){return l.email.toLowerCase()===u.email.toLowerCase();});
+          return{id:u.id,email:u.email,nombre:u.nombre,rol:u.rol,activo:u.activo,passwordHash:local?local.passwordHash:undefined,password:local?local.password:undefined};
+        });
+        // Añadir usuarios que solo existen localmente (no están en servidor)
+        locales.forEach(function(l){
+          if(!merged.find(function(m){return m.email.toLowerCase()===l.email.toLowerCase();})){
+            merged.push(l);
+          }
+        });
+        guardarUsuariosLocal(merged);
+        renderUsuarios(merged);
       }else{renderUsuarios(getUsuariosLocal());}
     })
     .catch(function(){renderUsuarios(getUsuariosLocal());});
