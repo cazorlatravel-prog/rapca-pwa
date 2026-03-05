@@ -33,6 +33,26 @@ var INFRA_CAMPOS_BASE=[
 var fotosDB=null;
 var fotosCacheMemoria={}; // Cache en memoria como respaldo
 
+// --- Feedback háptico para campo ---
+function vibrar(ms){try{if(navigator.vibrate)navigator.vibrate(ms||30);}catch(e){}}
+
+// --- Modo alto contraste (sol) ---
+function toggleAltoContraste(){
+  document.body.classList.toggle('high-contrast');
+  var activo=document.body.classList.contains('high-contrast');
+  localStorage.setItem('rapca_alto_contraste',activo?'1':'0');
+  var btn=document.getElementById('btnContraste');
+  if(btn)btn.textContent=activo?'🌙':'☀️';
+  vibrar(30);
+}
+function restaurarAltoContraste(){
+  if(localStorage.getItem('rapca_alto_contraste')==='1'){
+    document.body.classList.add('high-contrast');
+    var btn=document.getElementById('btnContraste');
+    if(btn)btn.textContent='🌙';
+  }
+}
+
 // --- Utilidades de seguridad ---
 function escapeHTML(s){if(!s)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function safeJSONParse(str,fallback){try{return JSON.parse(str);}catch(e){console.warn('JSON parse error:',e.message);return fallback!==undefined?fallback:null;}}
@@ -1636,6 +1656,7 @@ function dibujarMapaEnCanvas(ctx,x,y,w,h){
 }
 
 function capturarFoto(){
+  vibrar(50);
   var video=document.getElementById('cameraVideo'),canvas=document.getElementById('photoCanvas'),ctx=canvas.getContext('2d');
   var finalW=3060,finalH=4080;canvas.width=finalW;canvas.height=finalH;
   var vw=video.videoWidth,vh=video.videoHeight,scale=Math.max(finalW/vw,finalH/vh),sw=finalW/scale,sh=finalH/scale,sx=(vw-sw)/2,sy=(vh-sh)/2;
@@ -2329,6 +2350,7 @@ document.addEventListener('DOMContentLoaded',function(){
   // Inicializar usuarios locales y migrar datos
   initUsuariosLocal();
   migrarRegistrosEVaEI();
+  restaurarAltoContraste();
   // Comprobar sesión antes de iniciar app
   var saved=localStorage.getItem('rapca_sesion');
   if(saved){
@@ -2563,7 +2585,7 @@ async function exportarTodosPDF(){
 
 function updateSyncStatus(){var e=document.getElementById('syncStatus');e.textContent=isOnline?'Online':'Offline';e.className='sync-status '+(isOnline?'online':'offline');}
 function showLoading(s){document.getElementById('loading').classList.toggle('show',s);}
-function showToast(m,t){var e=document.getElementById('toast');e.textContent=m;e.className='toast show '+(t||'info');setTimeout(function(){e.classList.remove('show');},3000);}
+function showToast(m,t){var e=document.getElementById('toast');e.textContent=m;e.className='toast show '+(t||'info');if(t==='error')vibrar([50,30,50]);else if(t==='success')vibrar(30);setTimeout(function(){e.classList.remove('show');},3000);}
 
 // --- Ganaderos ---
 function initCamposExtra(){

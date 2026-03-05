@@ -13,6 +13,8 @@
 <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <link rel="preconnect" href="https://unpkg.com" crossorigin>
+<link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
@@ -542,6 +544,23 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 .gps-float-item{text-align:center}
 .gps-float-label{font-size:.7rem;color:#88d8b0;text-transform:uppercase}
 .gps-float-value{font-size:.95rem;font-weight:bold}
+/* === Alto contraste / Modo sol === */
+@media(prefers-contrast:more){
+  :root{--c-bg:#fff;--c-card:#fff;--c-text:#000;--c-text-secondary:#333;--c-text-muted:#444;--c-border:#000}
+  .card{border:2px solid #000;box-shadow:none}
+  .nav-btn{color:#000;font-weight:bold}
+  .nav-btn.active{border-bottom-color:#000;color:#000}
+  label{color:#000}
+  input,select,textarea{border-color:#555}
+  .btn,.btn-camera,.mapa-tool-btn{font-weight:bold;border:2px solid #000}
+}
+.high-contrast{--c-bg:#fff;--c-card:#fff;--c-text:#000;--c-text-secondary:#333;--c-text-muted:#444;--c-border:#000}
+.high-contrast .card{border:2px solid #000;box-shadow:none}
+.high-contrast .nav-btn{color:#000;font-weight:bold}
+.high-contrast .nav-btn.active{border-bottom-color:#000;color:#000}
+.high-contrast label{color:#000}
+.high-contrast input,.high-contrast select,.high-contrast textarea{border-color:#555}
+.high-contrast .btn,.high-contrast .btn-camera,.high-contrast .mapa-tool-btn{font-weight:bold;border:2px solid #000}
 </style>
 </head>
 <body>
@@ -558,7 +577,7 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <p style="margin-top:4px;text-align:center"><a href="#" onclick="forzarActualizacion();return false;" style="font-size:.65rem;color:#5b8c5a">Forzar actualización</a></p>
 </div>
 </div>
-<div class="header"><h1>🌿 RAPCA Campo</h1><span class="sync-status" id="syncStatus">...</span><div class="user-bar" id="userBar" style="display:none"><span class="user-name" id="userName">--</span><span id="userRole" style="font-size:.65rem;opacity:.7">--</span><button class="btn-logout" onclick="abrirBusqueda()" style="background:rgba(255,255,255,.15);margin-right:4px" aria-label="Buscar">🔍</button><button class="btn-logout" onclick="cerrarSesion()" aria-label="Cerrar sesión">Salir</button></div></div>
+<div class="header"><h1>🌿 RAPCA Campo</h1><span class="sync-status" id="syncStatus">...</span><div class="user-bar" id="userBar" style="display:none"><span class="user-name" id="userName">--</span><span id="userRole" style="font-size:.65rem;opacity:.7">--</span><button class="btn-logout" onclick="toggleAltoContraste()" style="background:rgba(255,255,255,.15);margin-right:4px" aria-label="Modo alto contraste" id="btnContraste">☀️</button><button class="btn-logout" onclick="abrirBusqueda()" style="background:rgba(255,255,255,.15);margin-right:4px" aria-label="Buscar">🔍</button><button class="btn-logout" onclick="cerrarSesion()" aria-label="Cerrar sesión">Salir</button></div></div>
 <nav class="nav" role="navigation" aria-label="Navegación principal"><button class="nav-btn active" onclick="showPage('menu')" aria-label="Menú principal"><span class="nav-icon" aria-hidden="true">🏠</span>Menú</button><button class="nav-btn" onclick="showPage('vp')" aria-label="Visita Previa"><span class="nav-icon" aria-hidden="true">🔍</span>VP</button><button class="nav-btn" onclick="showPage('el')" aria-label="Evaluación Ligera"><span class="nav-icon" aria-hidden="true">📋</span>EL</button><button class="nav-btn" onclick="showPage('ev')" aria-label="Evaluación Intensa"><span class="nav-icon" aria-hidden="true">📊</span>EI</button><button class="nav-btn" onclick="showPage('mapa')" aria-label="Mapa"><span class="nav-icon" aria-hidden="true">🗺️</span>Mapa</button><button class="nav-btn" onclick="showPage('ganadero')" aria-label="Ganaderos"><span class="nav-icon" aria-hidden="true">🐄</span>Gan.</button><button class="nav-btn" onclick="showPage('infra')" aria-label="Infraestructuras"><span class="nav-icon" aria-hidden="true">🌳</span>Infra</button><button class="nav-btn" onclick="showPage('panel')" aria-label="Panel de registros"><span class="nav-icon" aria-hidden="true">📂</span>Panel<span id="pendingBadge" class="pending-badge" style="display:none">0</span></button><button class="nav-btn" onclick="showPage('dashboard')" aria-label="Dashboard"><span class="nav-icon" aria-hidden="true">📈</span>Dash</button><button class="nav-btn" onclick="showPage('timeline')" aria-label="Historial"><span class="nav-icon" aria-hidden="true">📅</span>Hist.</button><button class="nav-btn" onclick="showPage('comparador')" aria-label="Comparador"><span class="nav-icon" aria-hidden="true">🔄</span>Comp.</button><button class="nav-btn" onclick="showPage('galeria')" aria-label="Galería"><span class="nav-icon" aria-hidden="true">📸</span>Galería</button></nav>
 
 <div id="page-menu" class="page active"><div style="max-width:500px;margin:20px auto"><button id="installBtn" class="menu-btn" style="display:none;background:#27ae60;color:#fff;border-top:4px solid #1e8449;grid-column:1/-1" onclick="instalarApp()"><span class="menu-icon">📲</span>Instalar App</button>
@@ -983,12 +1002,12 @@ input:focus,select:focus{outline:none;border-color:#5b8c5a}
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-<script src="app.js"></script>
-<script src="dashboard.js"></script>
-<script src="timeline.js"></script>
-<script src="comparador.js"></script>
-<script src="galeria.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
+<script src="app.js" defer></script>
+<script src="dashboard.js" defer></script>
+<script src="timeline.js" defer></script>
+<script src="comparador.js" defer></script>
+<script src="galeria.js" defer></script>
 </body>
 </html>
