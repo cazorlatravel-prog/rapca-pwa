@@ -54,6 +54,18 @@ function restaurarAltoContraste(){
   }
 }
 
+// --- Fetch autenticado con manejo de sesión expirada ---
+function fetchAuth(url,opts){
+  return fetch(url,opts).then(function(r){
+    if(r.status===401||r.status===403){
+      showToast('Sesión expirada. Inicie sesión de nuevo.','error');
+      cerrarSesion();
+      throw new Error('Sesión expirada');
+    }
+    return r;
+  });
+}
+
 // --- Utilidades de seguridad ---
 function escapeHTML(s){if(!s)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function safeJSONParse(str,fallback){try{return JSON.parse(str);}catch(e){console.warn('JSON parse error:',e.message);return fallback!==undefined?fallback:null;}}
@@ -132,12 +144,17 @@ function loginLocal(email,password){
   // Compatibilidad: soportar tanto passwordHash como password legacy
   var user=users.find(function(u){return u.email.toLowerCase()===emailNorm&&u.activo!==0;});
   if(!user)return{ok:false,error:'Email o contraseña incorrectos'};
-  // Si aún tiene password sin hash (migración pendiente), comparar directamente
+  // Si aún tiene password sin hash (migración pendiente), comparar y migrar
   if(user.password&&!user.passwordHash){
     if(user.password===password.trim()||user.password===password){
-      return{ok:true,token:generarTokenSeguro(),usuario:{email:user.email,nombre:user.nombre,rol:user.rol,id:user.id}};
+      // Migrar a hash inmediatamente y eliminar plaintext
+      return hashPassword(password.trim()).then(function(h){
+        user.passwordHash=h;delete user.password;
+        guardarUsuariosLocal(users);
+        return{ok:true,token:generarTokenSeguro(),usuario:{email:user.email,nombre:user.nombre,rol:user.rol,id:user.id}};
+      });
     }
-    return{ok:false,error:'Email o contraseña incorrectos'};
+    return Promise.resolve({ok:false,error:'Email o contraseña incorrectos'});
   }
   // Comparar con hash (async → devuelve promesa)
   return hashPassword(password.trim()).then(function(h){
@@ -317,7 +334,7 @@ function subirConReintentos(codigo,dataUrl,unidad,tipo,maxI,cb){
   function intentar(){
     i++;
     console.log('Subida '+codigo+' intento '+i+'/'+maxI);
-    var tkn=sesionActual?sesionActual.token:'';fetch(UPLOAD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codigo:codigo,imagen:dataUrl,unidad:unidad,tipo:tipo,token:tkn})}).then(function(r){if(!r.ok)return r.text().then(function(t){var msg=extraerErrorSubida(t);throw new Error('HTTP '+r.status+': '+msg);});return r.json();}).then(function(d){if(d.ok){eliminarSubidaPendiente(codigo);console.log('Subida OK: '+codigo+(d.url?' → '+d.url:''));cb(true);}else throw new Error(d.error||'Error servidor');}).catch(function(e){console.error('Intento '+i+'/'+maxI+' '+codigo+':',e.message);if(i<maxI&&isOnline)setTimeout(intentar,i*2000);else{showToast('❌ '+codigo+': '+e.message,'error');cb(false);}});
+    var tkn=sesionActual?sesionActual.token:'';fetchAuth(UPLOAD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codigo:codigo,imagen:dataUrl,unidad:unidad,tipo:tipo,token:tkn})}).then(function(r){if(!r.ok)return r.text().then(function(t){var msg=extraerErrorSubida(t);throw new Error('HTTP '+r.status+': '+msg);});return r.json();}).then(function(d){if(d.ok){eliminarSubidaPendiente(codigo);console.log('Subida OK: '+codigo+(d.url?' → '+d.url:''));cb(true);}else throw new Error(d.error||'Error servidor');}).catch(function(e){console.error('Intento '+i+'/'+maxI+' '+codigo+':',e.message);if(i<maxI&&isOnline)setTimeout(intentar,Math.pow(2,i)*1000);else{showToast('❌ '+codigo+': '+e.message,'error');cb(false);}});
   }
   intentar();
 }
@@ -962,7 +979,7 @@ function mostrarSelectorCampoEtiqueta(nombre,campos){
     for(var i=0;i<subcapas.length&&!ejemplo;i++){
       if(subcapas[i].extData&&subcapas[i].extData[campo])ejemplo=String(subcapas[i].extData[campo]).substring(0,40);
     }
-    h+='<button class="label-field-btn" data-field="'+campo.replace(/"/g,'&quot;')+'" style="display:block;width:100%;text-align:left;padding:10px 14px;margin-bottom:6px;border:1px solid #ddd;border-radius:6px;background:#f9f9f9;cursor:pointer;font-size:.9rem"><strong>'+campo+'</strong>'+(ejemplo?'<br><span style="color:#888;font-size:.8rem">ej: '+ejemplo+'</span>':'')+'</button>';
+    h+='<button class="label-field-btn" data-field="'+escapeHTML(campo)+'" style="display:block;width:100%;text-align:left;padding:10px 14px;margin-bottom:6px;border:1px solid #ddd;border-radius:6px;background:#f9f9f9;cursor:pointer;font-size:.9rem"><strong>'+escapeHTML(campo)+'</strong>'+(ejemplo?'<br><span style="color:#888;font-size:.8rem">ej: '+escapeHTML(ejemplo)+'</span>':'')+'</button>';
   });
   list.innerHTML=h;
   overlay.style.display='flex';
@@ -1753,7 +1770,7 @@ function aceptarFoto(){
   var thumbDataUrl=thumbCanvas.toDataURL('image/jpeg',0.50);
   fotosCacheMemoria[codigo]=thumbDataUrl;
   guardarFotoEnDB(codigo,thumbDataUrl);
-  canvas.toBlob(function(b){var l=document.createElement('a');l.href=URL.createObjectURL(b);l.download=codigo+'.jpg';l.click();},'image/jpeg',0.95);
+  canvas.toBlob(function(b){var u=URL.createObjectURL(b);var l=document.createElement('a');l.href=u;l.download=codigo+'.jpg';l.click();setTimeout(function(){URL.revokeObjectURL(u);},5000);},'image/jpeg',0.95);
   var upCanvas=document.createElement('canvas');upCanvas.width=1530;upCanvas.height=2040;
   upCanvas.getContext('2d').drawImage(canvas,0,0,3060,4080,0,0,1530,2040);
   var upData=upCanvas.toDataURL('image/jpeg',0.85);
@@ -1806,7 +1823,7 @@ function initPreviewListeners(){
   prev.addEventListener('touchstart',function(e){if(!modoAnotacion)return;e.preventDefault();var t=e.touches[0];handleTap(t.clientX,t.clientY);},{passive:false});
 }
 
-function agregarFotoALista(c){var lId,iId,pre=(camaraTipo==='VP')?'vp':(camaraTipo==='EL')?'el':'ev';if(camaraSubtipo==='general'){lId=pre+'-fotos-lista';iId=pre+'-fotos';}else if(camaraSubtipo==='W1'){lId=pre+'-fc1-lista';iId=pre+'-fc1';}else{lId=pre+'-fc2-lista';iId=pre+'-fc2';}document.getElementById(lId).innerHTML+='<span class="foto-tag">'+c+'</span>';var inp=document.getElementById(iId);inp.value=inp.value?(inp.value+', '+c):c;}
+function agregarFotoALista(c){var lId,iId,pre=(camaraTipo==='VP')?'vp':(camaraTipo==='EL')?'el':'ev';if(camaraSubtipo==='general'){lId=pre+'-fotos-lista';iId=pre+'-fotos';}else if(camaraSubtipo==='W1'){lId=pre+'-fc1-lista';iId=pre+'-fc1';}else{lId=pre+'-fc2-lista';iId=pre+'-fc2';}var span=document.createElement('span');span.className='foto-tag';span.textContent=c;document.getElementById(lId).appendChild(span);var inp=document.getElementById(iId);inp.value=inp.value?(inp.value+', '+c):c;}
 
 // --- Autenticación y Sesiones ---
 function procesarLoginLocal(email,pass,msgError){
@@ -2084,7 +2101,7 @@ function tieneTokenServidor(){
 
 function sincronizarRegistroServidor(registro){
   if(!tieneTokenServidor()||!isOnline)return;
-  fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'guardar',token:sesionActual.token,registro:registro})})
+  fetchAuth(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'guardar',token:sesionActual.token,registro:registro})})
   .then(function(r){if(!r.ok)console.warn('Error sync registro al servidor: HTTP '+r.status);return r.json();})
   .then(function(d){if(!d.ok)console.warn('Error sync registro:',d.error);})
   .catch(function(e){console.warn('Error red sync registro:',e);});
@@ -2092,7 +2109,7 @@ function sincronizarRegistroServidor(registro){
 // --- Sincronizar infraestructura al servidor ---
 function sincronizarInfraServidor(infra){
   if(!tieneTokenServidor()||!isOnline)return;
-  fetch(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'guardar_infra',token:sesionActual.token,infra:infra})})
+  fetchAuth(DATOS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'guardar_infra',token:sesionActual.token,infra:infra})})
   .then(function(r){if(!r.ok)console.warn('Error sync infra al servidor: HTTP '+r.status);return r.json();})
   .then(function(d){if(!d.ok)console.warn('Error sync infra:',d.error);})
   .catch(function(e){console.warn('Error red sync infra:',e);});
@@ -2436,7 +2453,7 @@ function selectAutocomplete(v){if(currentAutocomplete){currentAutocomplete.input
 function showPage(p){var pages=['menu','vp','el','ev','mapa','ganadero','infra','panel','dashboard','timeline','comparador','galeria'];document.querySelectorAll('.page').forEach(function(x){x.classList.remove('active');});document.querySelectorAll('.nav-btn').forEach(function(b){b.classList.remove('active');});document.getElementById('page-'+p).classList.add('active');var idx=pages.indexOf(p);if(idx>=0)document.querySelectorAll('.nav-btn')[idx].classList.add('active');if(p==='panel')loadPanel();if(p==='mapa'){setTimeout(function(){initMapa();if(mapaLeaflet)mapaLeaflet.invalidateSize();},100);}if(p==='ganadero')cargarListaGanaderos();if(p==='infra')cargarListaInfra();if(p==='dashboard'&&typeof initDashboard==='function')initDashboard();if(p==='timeline'&&typeof initTimeline==='function')initTimeline();if(p==='comparador'&&typeof initComparador==='function')initComparador();if(p==='galeria'&&typeof initGaleria==='function')initGaleria();window.scrollTo(0,0);}
 function toggleSection(id){document.getElementById(id).classList.toggle('open');}
 function setTransecto(n){transectoActual=n;document.querySelectorAll('.transecto-btn').forEach(function(b,i){b.classList.toggle('active',i===n-1);});document.getElementById('btnGuardarEV').textContent='💾 Guardar EI - T'+n;}
-function guardarBorradores(){localStorage.setItem('rapca_borrador_vp',JSON.stringify(obtenerDatosVP()));localStorage.setItem('rapca_borrador_ev',JSON.stringify(obtenerDatosEV()));localStorage.setItem('rapca_borrador_el',JSON.stringify(obtenerDatosEL()));}
+function guardarBorradores(){try{localStorage.setItem('rapca_borrador_vp',JSON.stringify(obtenerDatosVP()));localStorage.setItem('rapca_borrador_ev',JSON.stringify(obtenerDatosEV()));localStorage.setItem('rapca_borrador_el',JSON.stringify(obtenerDatosEL()));}catch(e){console.warn('Error guardando borradores:',e.message);}}
 function cargarBorradores(){try{var bVP=localStorage.getItem('rapca_borrador_vp');if(bVP)cargarDatosVP(JSON.parse(bVP));var bEV=localStorage.getItem('rapca_borrador_ev');if(bEV)cargarDatosEV(JSON.parse(bEV));var bEL=localStorage.getItem('rapca_borrador_el');if(bEL)cargarDatosEL(JSON.parse(bEL));}catch(e){}}
 // --- Helpers compartidos VP/EL (mismos campos, distinto prefijo) ---
 var CAMPOS_VPEL=['fecha','zona','unidad','past1','past2','past3','senal','veredas','cagarrutas','fotos','fc1','fc2','obs'];
@@ -2449,7 +2466,7 @@ function obtenerDatosVP(){return _obtenerDatosSimple('vp');}
 function cargarDatosVP(d){_cargarDatosSimple('vp',d);}
 function obtenerDatosEV(){var d={fecha:document.getElementById('ev-fecha').value,zona:document.getElementById('ev-zona').value,unidad:document.getElementById('ev-unidad').value,transecto:transectoActual,plantas:[],palatables:[],past1:document.getElementById('ev-past1').value,past2:document.getElementById('ev-past2').value,past3:document.getElementById('ev-past3').value,herbaceas:[],mat1cob:document.getElementById('ev-mat1cob').value,mat1alt:document.getElementById('ev-mat1alt').value,mat1esp:document.getElementById('ev-mat1esp').value,mat2cob:document.getElementById('ev-mat2cob').value,mat2alt:document.getElementById('ev-mat2alt').value,mat2esp:document.getElementById('ev-mat2esp').value,fotos:document.getElementById('ev-fotos').value,fc1:document.getElementById('ev-fc1').value,fc2:document.getElementById('ev-fc2').value,obs:document.getElementById('ev-obs').value};for(var i=1;i<=10;i++){var p={nombre:document.getElementById('ev-planta'+i).value,notas:[]};for(var n=1;n<=10;n++)p.notas.push(document.getElementById('ev-planta'+i+'-n'+n).value);d.plantas.push(p);}for(var i=1;i<=3;i++){var p={nombre:document.getElementById('ev-palatable'+i).value,notas:[]};for(var n=1;n<=15;n++)p.notas.push(document.getElementById('ev-palatable'+i+'-n'+n).value);d.palatables.push(p);}for(var i=1;i<=7;i++)d.herbaceas.push(document.getElementById('ev-herb'+i).value);return d;}
 function cargarDatosEV(d){if(d.fecha)document.getElementById('ev-fecha').value=d.fecha;if(d.zona)document.getElementById('ev-zona').value=d.zona;if(d.unidad)document.getElementById('ev-unidad').value=d.unidad;if(d.transecto)setTransecto(d.transecto);if(d.plantas)for(var i=0;i<d.plantas.length&&i<10;i++){document.getElementById('ev-planta'+(i+1)).value=d.plantas[i].nombre||'';for(var n=0;n<d.plantas[i].notas.length&&n<10;n++)document.getElementById('ev-planta'+(i+1)+'-n'+(n+1)).value=d.plantas[i].notas[n]||'';}if(d.palatables)for(var i=0;i<d.palatables.length&&i<3;i++){document.getElementById('ev-palatable'+(i+1)).value=d.palatables[i].nombre||'';for(var n=0;n<d.palatables[i].notas.length&&n<15;n++)document.getElementById('ev-palatable'+(i+1)+'-n'+(n+1)).value=d.palatables[i].notas[n]||'';}if(d.past1)document.getElementById('ev-past1').value=d.past1;if(d.past2)document.getElementById('ev-past2').value=d.past2;if(d.past3)document.getElementById('ev-past3').value=d.past3;if(d.herbaceas)for(var i=0;i<7;i++)document.getElementById('ev-herb'+(i+1)).value=d.herbaceas[i]||'';if(d.mat1cob)document.getElementById('ev-mat1cob').value=d.mat1cob;if(d.mat1alt)document.getElementById('ev-mat1alt').value=d.mat1alt;if(d.mat1esp)document.getElementById('ev-mat1esp').value=d.mat1esp;if(d.mat2cob)document.getElementById('ev-mat2cob').value=d.mat2cob;if(d.mat2alt)document.getElementById('ev-mat2alt').value=d.mat2alt;if(d.mat2esp)document.getElementById('ev-mat2esp').value=d.mat2esp;if(d.fotos){document.getElementById('ev-fotos').value=d.fotos;actualizarListaFotos('ev-fotos-lista',d.fotos);}if(d.fc1){document.getElementById('ev-fc1').value=d.fc1;actualizarListaFotos('ev-fc1-lista',d.fc1);}if(d.fc2){document.getElementById('ev-fc2').value=d.fc2;actualizarListaFotos('ev-fc2-lista',d.fc2);}if(d.obs)document.getElementById('ev-obs').value=d.obs;actualizarEstadisticasPlantas();actualizarEstadisticasPalatables();actualizarMediaHerbaceas();actualizarResumenMatorral();}
-function actualizarListaFotos(lId,f){var l=document.getElementById(lId);if(!l||!f)return;l.innerHTML=f.split(',').map(function(x){return x.trim();}).filter(function(x){return x;}).map(function(x){return'<span class="foto-tag">'+x+'</span>';}).join('');}
+function actualizarListaFotos(lId,f){var l=document.getElementById(lId);if(!l||!f)return;l.innerHTML=f.split(',').map(function(x){return x.trim();}).filter(function(x){return x;}).map(function(x){return'<span class="foto-tag">'+escapeHTML(x)+'</span>';}).join('');}
 function limpiarFormularioVP(){_limpiarFormSimple('vp','VP','rapca_borrador_vp');}
 // --- EL (Evaluación Ligera) --- usa helpers compartidos con VP
 function obtenerDatosEL(){return _obtenerDatosSimple('el');}
@@ -2948,7 +2965,7 @@ async function descargarZIPUnidad(unidad){
   });
   if(count===0){showLoading(false);showToast('Sin fotos para '+unidad,'info');return;}
   zip.generateAsync({type:'blob'}).then(function(blob){
-    var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='RAPCA_'+unidad+'_fotos.zip';a.click();
+    var bUrl=URL.createObjectURL(blob);var a=document.createElement('a');a.href=bUrl;a.download='RAPCA_'+unidad+'_fotos.zip';a.click();setTimeout(function(){URL.revokeObjectURL(bUrl);},5000);
     showLoading(false);showToast(count+' fotos descargadas','success');
   }).catch(function(e){showLoading(false);showToast('Error ZIP: '+e.message,'error');});
 }
@@ -2979,7 +2996,7 @@ async function descargarZIPTodas(){
   });
   if(count===0){showLoading(false);showToast('Sin fotos disponibles','info');return;}
   zip.generateAsync({type:'blob'}).then(function(blob){
-    var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='RAPCA_todas_fotos.zip';a.click();
+    var bUrl=URL.createObjectURL(blob);var a=document.createElement('a');a.href=bUrl;a.download='RAPCA_todas_fotos.zip';a.click();setTimeout(function(){URL.revokeObjectURL(bUrl);},5000);
     showLoading(false);showToast(count+' fotos en ZIP','success');
   }).catch(function(e){showLoading(false);showToast('Error ZIP: '+e.message,'error');});
 }
@@ -3012,7 +3029,7 @@ function exportarKML(){
   });
   kml+='</Document>\n</kml>';
   var blob=new Blob([kml],{type:'application/vnd.google-earth.kml+xml'});
-  var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='RAPCA_Campo.kml';a.click();
+  var bUrl=URL.createObjectURL(blob);var a=document.createElement('a');a.href=bUrl;a.download='RAPCA_Campo.kml';a.click();setTimeout(function(){URL.revokeObjectURL(bUrl);},5000);
   showToast('KML exportado','success');
 }
 
