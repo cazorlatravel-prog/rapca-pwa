@@ -83,19 +83,33 @@ function generarToken() {
 
 function obtenerUsuarioPorToken($pdo, $token) {
     if (!$token || strlen($token) < 10) return null;
+    // Detectar nombre de columna de fecha en sesiones (fecha_ultimo_acceso o fecha_creacion)
+    $colsS = $pdo->query("SHOW COLUMNS FROM sesiones")->fetchAll(PDO::FETCH_COLUMN);
+    $dateColS = in_array('fecha_ultimo_acceso', $colsS) ? 'fecha_ultimo_acceso' : (in_array('updated_at', $colsS) ? 'updated_at' : null);
     // Limpiar tokens expirados
-    try {
-        $pdo->prepare("DELETE FROM sesiones WHERE fecha_ultimo_acceso < DATE_SUB(NOW(), INTERVAL ? DAY)")
-            ->execute([AUTH_TOKEN_EXPIRY_DAYS]);
-    } catch (PDOException $e) { /* no bloquear */ }
-    $stmt = $pdo->prepare("SELECT u.id, u.email, u.nombre, u.rol, u.activo FROM usuarios u
-                           INNER JOIN sesiones s ON s.usuario_id = u.id
-                           WHERE s.token = ? AND u.activo = 1
-                           AND s.fecha_ultimo_acceso >= DATE_SUB(NOW(), INTERVAL ? DAY)");
-    $stmt->execute([$token, AUTH_TOKEN_EXPIRY_DAYS]);
+    if ($dateColS) {
+        try {
+            $pdo->prepare("DELETE FROM sesiones WHERE $dateColS < DATE_SUB(NOW(), INTERVAL ? DAY)")
+                ->execute([AUTH_TOKEN_EXPIRY_DAYS]);
+        } catch (PDOException $e) { /* no bloquear */ }
+    }
+    // Buscar sesión por token
+    if ($dateColS) {
+        $stmt = $pdo->prepare("SELECT u.id, u.email, u.nombre, u.rol, u.activo FROM usuarios u
+                               INNER JOIN sesiones s ON s.usuario_id = u.id
+                               WHERE s.token = ? AND u.activo = 1
+                               AND s.$dateColS >= DATE_SUB(NOW(), INTERVAL ? DAY)");
+        $stmt->execute([$token, AUTH_TOKEN_EXPIRY_DAYS]);
+    } else {
+        // Sin columna de fecha, buscar sin filtro de expiración
+        $stmt = $pdo->prepare("SELECT u.id, u.email, u.nombre, u.rol, u.activo FROM usuarios u
+                               INNER JOIN sesiones s ON s.usuario_id = u.id
+                               WHERE s.token = ? AND u.activo = 1");
+        $stmt->execute([$token]);
+    }
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
-    if ($user) {
-        $pdo->prepare("UPDATE sesiones SET fecha_ultimo_acceso = NOW() WHERE token = ?")->execute([$token]);
+    if ($user && $dateColS) {
+        try { $pdo->prepare("UPDATE sesiones SET $dateColS = NOW() WHERE token = ?")->execute([$token]); } catch (PDOException $e) {}
     }
     return $user;
 }

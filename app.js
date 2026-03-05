@@ -1990,9 +1990,13 @@ function cargarListaUsuarios(){
   }
   if(isOnline){
     fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'listar_usuarios',token:sesionActual.token})})
-    .then(function(r){return r.json();})
+    .then(function(r){
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      return r.json();
+    })
     .then(function(data){
-      if(data.ok){
+      if(data.ok&&data.usuarios){
+        console.log('Usuarios del servidor:',data.usuarios.length);
         // Fusionar servidor + locales (mantener usuarios que solo existen localmente)
         var locales=getUsuariosLocal();
         var merged=data.usuarios.map(function(u){
@@ -2007,9 +2011,16 @@ function cargarListaUsuarios(){
         });
         guardarUsuariosLocal(merged);
         renderUsuarios(merged);
-      }else{renderUsuarios(getUsuariosLocal());}
+      }else{
+        console.warn('listar_usuarios respuesta sin ok:',JSON.stringify(data));
+        showToast('Servidor: '+(data.error||'error desconocido'),'warning');
+        renderUsuarios(getUsuariosLocal());
+      }
     })
-    .catch(function(){renderUsuarios(getUsuariosLocal());});
+    .catch(function(e){
+      console.error('Error cargando usuarios del servidor:',e.message);
+      renderUsuarios(getUsuariosLocal());
+    });
   }else{renderUsuarios(getUsuariosLocal());}
 }
 function toggleUsuario(id){
