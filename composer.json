@@ -1,0 +1,13 @@
+{
+    "name": "rapca/campo",
+    "description": "RAPCA Campo — PWA para evaluación de medios agropecuarios",
+    "type": "project",
+    "require": {
+        "php": ">=8.1",
+        "ext-pdo": "*",
+        "ext-curl": "*"
+    },
+    "config": {
+        "optimize-autoloader": true
+    }
+}

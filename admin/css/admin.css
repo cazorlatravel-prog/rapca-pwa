@@ -1,0 +1,185 @@
+/* RAPCA Campo — Estilos del panel admin */
+
+:root {
+    --rapca-dark: #1a3d2e;
+    --rapca-green: #5b8c5a;
+    --rapca-vp: #88d8b0;
+    --rapca-el: #2ecc71;
+    --rapca-ei: #fd9853;
+    --rapca-map: #3498db;
+    --rapca-ganadero: #3498db;
+    --rapca-infra: #8e44ad;
+    --rapca-dash: #f39c12;
+    --rapca-timeline: #e74c3c;
+    --rapca-comp: #1abc9c;
+    --rapca-bg: #f5f5f0;
+}
+
+body {
+    background: var(--rapca-bg);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.navbar .nav-link.active {
+    font-weight: 600;
+    border-bottom: 2px solid #fff;
+}
+
+/* Cards */
+.stat-card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    transition: transform 0.2s;
+}
+.stat-card:hover {
+    transform: translateY(-2px);
+}
+.stat-card .stat-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    color: #fff;
+}
+
+/* Badges tipo registro */
+.badge-vp { background: var(--rapca-vp); color: #1a3d2e; }
+.badge-el { background: var(--rapca-el); color: #fff; }
+.badge-ei { background: var(--rapca-ei); color: #fff; }
+
+/* Tabla responsive */
+.table-rapca {
+    font-size: 0.9rem;
+}
+.table-rapca th {
+    background: var(--rapca-dark);
+    color: #fff;
+    font-weight: 500;
+    border: none;
+}
+
+/* Filtros */
+.filter-bar {
+    background: #fff;
+    border-radius: 12px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+/* Map container */
+#map-container {
+    height: calc(100vh - 120px);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+/* Timeline */
+.timeline-item {
+    border-left: 3px solid var(--rapca-dark);
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.5rem;
+    background: #fff;
+    border-radius: 0 8px 8px 0;
+}
+.timeline-item.tipo-vp { border-left-color: var(--rapca-vp); }
+.timeline-item.tipo-el { border-left-color: var(--rapca-el); }
+.timeline-item.tipo-ei { border-left-color: var(--rapca-ei); }
+
+/* Photo grid */
+.photo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 0.5rem;
+}
+.photo-grid img {
+    width: 100%;
+    aspect-ratio: 3/4;
+    object-fit: cover;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+/* Lightbox */
+.lightbox-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.9);
+    z-index: 9999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+.lightbox-overlay.active { display: flex; }
+.lightbox-overlay img {
+    max-width: 90vw;
+    max-height: 90vh;
+    object-fit: contain;
+}
+
+/* Comparador slider */
+.comparador-container {
+    position: relative;
+    overflow: hidden;
+    border-radius: 12px;
+}
+.comparador-slider {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 4px;
+    height: 100%;
+    background: #fff;
+    cursor: ew-resize;
+    z-index: 10;
+}
+
+/* Search */
+.search-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 9998;
+    display: none;
+}
+.search-overlay.active { display: flex; justify-content: center; padding-top: 10vh; }
+.search-box {
+    background: #fff;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 70vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+
+/* Loading */
+.loading-spinner {
+    display: inline-block;
+    width: 1.5rem;
+    height: 1.5rem;
+    border: 3px solid #dee2e6;
+    border-top: 3px solid var(--rapca-dark);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Toast */
+.toast-container {
+    position: fixed;
+    bottom: 1rem;
+    right: 1rem;
+    z-index: 9999;
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+    .container-fluid { padding: 0.5rem; }
+    .stat-card { margin-bottom: 0.5rem; }
+    .photo-grid { grid-template-columns: repeat(3, 1fr); }
+}

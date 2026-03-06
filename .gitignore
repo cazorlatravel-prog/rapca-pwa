@@ -1,1 +1,6 @@
 # config.php ya no tiene secrets hardcodeados, lee del .env del hosting
+.env
+vendor/
+*.log
+.DS_Store
+Thumbs.db
