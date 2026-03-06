@@ -1810,8 +1810,15 @@ function initPreviewListeners(){
   function handleTap(cx,cy){
     if(!modoAnotacion)return;
     var rect=prev.getBoundingClientRect();
-    var fullX=(cx-rect.left)*(3060/rect.width);
-    var fullY=(cy-rect.top)*(4080/rect.height);
+    // Usar dimensiones internas del canvas (no CSS) para escalar correctamente
+    var scaleX=prev.width/rect.width;
+    var scaleY=prev.height/rect.height;
+    var canvasX=(cx-rect.left)*scaleX;
+    var canvasY=(cy-rect.top)*scaleY;
+    // Convertir de coordenadas del canvas preview a coordenadas originales (3060x4080)
+    var s=prev.width/3060;
+    var fullX=canvasX/s;
+    var fullY=canvasY/s;
     var radio=parseInt(document.getElementById('circleSize').value)||200;
     var texto=document.getElementById('annotationText').value.trim();
     anotaciones.push({x:fullX,y:fullY,radio:radio,texto:texto});
@@ -1903,6 +1910,7 @@ function cerrarSesion(){
     fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'logout',token:sesionActual.token})}).catch(function(){});
   }
   localStorage.removeItem('rapca_sesion');sesionActual=null;
+  document.documentElement.classList.remove('has-session');
   // Limpiar estado de edición
   editandoId=null;editandoGanaderoId=null;editandoInfraId=null;
   // Limpiar contadores de fotos
@@ -2656,6 +2664,7 @@ async function exportarPDF(id){
   
   var html=generarHTMLRegistroConFotos(r,fotos);
   var w=window.open('','_blank');
+  if(!w){showLoading(false);showToast('Permite ventanas emergentes para generar PDF','error');return;}
   w.document.write('<!DOCTYPE html><html><head><title>RAPCA '+r.tipo+' '+r.unidad+'</title><style>@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}img{max-width:100%;height:auto;}}</style></head><body>'+html+'<script>setTimeout(function(){window.print();},1000);<\/script></body></html>');
   w.document.close();
   showLoading(false);
@@ -2670,6 +2679,7 @@ async function exportarTodosPDF(){
   console.log('Fotos para PDF múltiple:',Object.keys(fotos));
   
   var w=window.open('','_blank');
+  if(!w){showLoading(false);showToast('Permite ventanas emergentes para generar PDF','error');return;}
   var h='<!DOCTYPE html><html><head><title>RAPCA</title><style>@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}img{max-width:100%;height:auto;}.pb{page-break-after:always}}</style></head><body>';
   for(var i=0;i<rs.length;i++){
     h+=generarHTMLRegistroConFotos(rs[i],fotos);
