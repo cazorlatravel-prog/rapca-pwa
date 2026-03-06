@@ -1805,13 +1805,20 @@ function dibujarAnotacionesEnCanvas(ctx,w,h){
 function initPreviewListeners(){
   var prev=document.getElementById('previewCanvas');
   if(!prev)return;
+  var lastTapTime=0;
   function handleTap(cx,cy){
     if(!modoAnotacion)return;
+    // Debounce: evitar doble disparo touch+click (300ms)
+    var now=Date.now();
+    if(now-lastTapTime<300)return;
+    lastTapTime=now;
     var rect=prev.getBoundingClientRect();
     if(rect.width===0||rect.height===0)return;
     // Coordenadas relativas al canvas visual
     var relX=cx-rect.left;
     var relY=cy-rect.top;
+    // Validar que el toque esté dentro del canvas
+    if(relX<0||relY<0||relX>rect.width||relY>rect.height)return;
     // Escalar de visual a buffer del canvas
     var scaleX=prev.width/rect.width;
     var scaleY=prev.height/rect.height;
@@ -1822,14 +1829,17 @@ function initPreviewListeners(){
     if(s===0)s=1;
     var fullX=canvasX/s;
     var fullY=canvasY/s;
-    var radio=parseInt(document.getElementById('circleSize').value)||200;
+    // Limitar a rango válido
+    fullX=Math.max(0,Math.min(3060,fullX));
+    fullY=Math.max(0,Math.min(4080,fullY));
+    var radio=parseInt(document.getElementById('circleSize').value,10)||200;
     var texto=document.getElementById('annotationText').value.trim();
     anotaciones.push({x:fullX,y:fullY,radio:radio,texto:texto});
     document.getElementById('annotationText').value='';
     dibujarVistaPrevia();
     showToast('Punto '+anotaciones.length+' marcado','success');
   }
-  // Usar touchend en vez de touchstart para mejor compatibilidad móvil
+  // Touch para móvil
   prev.addEventListener('touchend',function(e){
     if(!modoAnotacion)return;
     e.preventDefault();
@@ -1838,8 +1848,6 @@ function initPreviewListeners(){
   },{passive:false});
   // Click para desktop
   prev.addEventListener('click',function(e){
-    // Evitar doble disparo si ya se manejó por touch
-    if(e.sourceCapabilities&&e.sourceCapabilities.firesTouchEvents)return;
     handleTap(e.clientX,e.clientY);
   });
 }
@@ -1943,6 +1951,7 @@ function cerrarSesion(){
 }
 function ocultarLoginMostrarApp(){
   document.getElementById('loginOverlay').classList.add('hidden');
+  document.documentElement.classList.add('has-session');
   document.getElementById('userBar').style.display='flex';
   document.getElementById('userName').textContent=sesionActual.nombre||sesionActual.email;
   document.getElementById('userRole').textContent=sesionActual.rol==='admin'?'Admin':'Operador';
@@ -2687,7 +2696,7 @@ function abrirVentanaPDF(htmlContent,titulo){
   overlay.appendChild(iframe);
   document.body.appendChild(overlay);
   var idoc=iframe.contentDocument||iframe.contentWindow.document;
-  idoc.open();idoc.write(htmlContent.replace(/<script>.*?<\/script>/g,''));idoc.close();
+  idoc.open();idoc.write(htmlContent.replace(/<script[\s\S]*?<\/script>/gi,''));idoc.close();
   toolbar.querySelector('#pdfPrintBtn').onclick=function(){iframe.contentWindow.print();};
   toolbar.querySelector('#pdfCloseBtn').onclick=function(){document.body.removeChild(overlay);};
 }
