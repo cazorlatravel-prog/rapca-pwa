@@ -2427,8 +2427,24 @@ document.addEventListener('DOMContentLoaded',function(){
   var saved=localStorage.getItem('rapca_sesion');
   if(saved){
     sesionActual=JSON.parse(saved);
-    if(isOnline){validarSesion();}
-    else{ocultarLoginMostrarApp();}
+    // Siempre ocultar login y mostrar app si hay sesión guardada
+    ocultarLoginMostrarApp();
+    // Validar token con servidor en background (no bloquea la app)
+    if(isOnline&&sesionActual.token&&sesionActual.token.indexOf('local_')!==0){
+      fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'validar',token:sesionActual.token})})
+      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+      .then(function(data){
+        if(data.ok){
+          sesionActual.nombre=data.usuario.nombre;sesionActual.rol=data.usuario.rol;
+          localStorage.setItem('rapca_sesion',JSON.stringify(sesionActual));
+          document.getElementById('userName').textContent=sesionActual.nombre||sesionActual.email;
+          document.getElementById('userRole').textContent=sesionActual.rol==='admin'?'Admin':'Operador';
+        }else{
+          console.warn('Token no válido en servidor, sesión local mantenida');
+        }
+      })
+      .catch(function(e){console.warn('No se pudo validar token:',e.message);});
+    }
   }
   // Si no hay sesión, se muestra el login overlay automáticamente
   // Permitir Enter en login
