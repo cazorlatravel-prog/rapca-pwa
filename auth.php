@@ -1,7 +1,13 @@
 <?php
 require_once 'config.php';
 
-header('Access-Control-Allow-Origin: *');
+$allowedOrigin = (!empty($_SERVER['HTTP_ORIGIN'])) ? $_SERVER['HTTP_ORIGIN'] : '';
+$trustedOrigins = ['https://rapca.app', 'https://www.rapca.app', 'http://localhost:8000'];
+if (in_array($allowedOrigin, $trustedOrigins, true)) {
+    header('Access-Control-Allow-Origin: ' . $allowedOrigin);
+} else {
+    header('Access-Control-Allow-Origin: https://rapca.app');
+}
 header('Access-Control-Allow-Methods: POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Content-Type: application/json; charset=utf-8');
@@ -180,36 +186,11 @@ switch ($action) {
         echo json_encode(['ok' => true, 'id' => $pdo->lastInsertId()]);
         break;
 
-    case 'debug_sesiones':
-        // Diagnóstico temporal — eliminar en producción
-        $token = trim($input['token'] ?? '');
-        $sesCount = $pdo->query("SELECT COUNT(*) FROM sesiones")->fetchColumn();
-        $colsS = $pdo->query("SHOW COLUMNS FROM sesiones")->fetchAll(PDO::FETCH_COLUMN);
-        $tokenExists = false;
-        if ($token) {
-            $st = $pdo->prepare("SELECT COUNT(*) FROM sesiones WHERE token = ?");
-            $st->execute([$token]);
-            $tokenExists = $st->fetchColumn() > 0;
-        }
-        $user = $token ? obtenerUsuarioPorToken($pdo, $token) : null;
-        echo json_encode([
-            'sesiones_count' => $sesCount,
-            'sesiones_columns' => $colsS,
-            'token_exists' => $tokenExists,
-            'token_first10' => $token ? substr($token, 0, 10) . '...' : null,
-            'user_from_token' => $user
-        ]);
-        break;
-
     case 'listar_usuarios':
         $token = trim($input['token'] ?? '');
         $admin = obtenerUsuarioPorToken($pdo, $token);
         if (!$admin || $admin['rol'] !== 'admin') {
-            // Dar más info para diagnóstico
-            $debugInfo = ['token_length' => strlen($token)];
-            if ($admin) { $debugInfo['admin_rol'] = $admin['rol']; }
-            else { $debugInfo['admin'] = 'null - token no encontrado en sesiones'; }
-            echo json_encode(['error' => 'Sin permisos de administrador', 'debug' => $debugInfo]);
+            echo json_encode(['error' => 'Sin permisos de administrador']);
             exit;
         }
         // Compatible con ambas versiones de esquema (fecha_creacion o created_at)

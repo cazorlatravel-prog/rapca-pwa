@@ -1,7 +1,9 @@
 <?php
 require_once 'config.php';
 
-header('Access-Control-Allow-Origin: *');
+$_allowedOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
+$_trustedOrigins = ['https://rapca.app', 'https://www.rapca.app', 'http://localhost:8000'];
+header('Access-Control-Allow-Origin: ' . (in_array($_allowedOrigin, $_trustedOrigins, true) ? $_allowedOrigin : 'https://rapca.app'));
 header('Access-Control-Allow-Methods: POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Content-Type: application/json; charset=utf-8');
