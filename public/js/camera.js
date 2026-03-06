@@ -17,6 +17,7 @@
     let anotaciones = [];
     let modoAnotacion = false;
     let pendingCodigo = null;
+    let overlayRAF = null; // requestAnimationFrame ID
 
     function $(id) { return document.getElementById(id); }
 
@@ -55,7 +56,10 @@
     };
 
     function updateCameraOverlay() {
-        if (!$('camera-modal').classList.contains('active')) return;
+        if (!$('camera-modal').classList.contains('active')) {
+            overlayRAF = null;
+            return;
+        }
 
         $('camera-heading').textContent = Math.round(state.currentHeading) + '\u00B0';
         if (state.currentLat) {
@@ -64,7 +68,7 @@
                 (state.currentUTM ? '\n' + state.currentUTM : '');
         }
 
-        requestAnimationFrame(updateCameraOverlay);
+        overlayRAF = requestAnimationFrame(updateCameraOverlay);
     }
 
     function generarCodigoFoto(tipo, subtipo) {
@@ -403,7 +407,22 @@
         const bannerH = 75 + anotaciones.length * 55;
         ctx.fillStyle = 'rgba(180,0,0,0.85)';
         ctx.beginPath();
-        ctx.roundRect(20, 20, w - 40, bannerH, 20);
+        if (ctx.roundRect) {
+            ctx.roundRect(20, 20, w - 40, bannerH, 20);
+        } else {
+            // Fallback para Safari y navegadores sin roundRect
+            const x = 20, y = 20, bw = w - 40, bh = bannerH, r = 20;
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + bw - r, y);
+            ctx.quadraticCurveTo(x + bw, y, x + bw, y + r);
+            ctx.lineTo(x + bw, y + bh - r);
+            ctx.quadraticCurveTo(x + bw, y + bh, x + bw - r, y + bh);
+            ctx.lineTo(x + r, y + bh);
+            ctx.quadraticCurveTo(x, y + bh, x, y + bh - r);
+            ctx.lineTo(x, y + r);
+            ctx.quadraticCurveTo(x, y, x + r, y);
+            ctx.closePath();
+        }
         ctx.fill();
         ctx.fillStyle = '#FFD700';
         ctx.font = 'bold 55px Arial';

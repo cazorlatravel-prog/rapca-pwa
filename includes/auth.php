@@ -24,6 +24,8 @@ function login(string $email, string $password): array|false {
     if (!$user['activo']) return false;
     if (!password_verify($password, $user['password'])) return false;
 
+    session_regenerate_id(true);
+
     $_SESSION['user_id']    = (int) $user['id'];
     $_SESSION['user_name']  = $user['nombre'];
     $_SESSION['user_email'] = $user['email'];

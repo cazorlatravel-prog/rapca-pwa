@@ -3,7 +3,7 @@
  * Cache-first strategy for offline support
  */
 
-const CACHE_NAME = 'rapca-campo-v2';
+const CACHE_NAME = 'rapca-campo-v3';
 const STATIC_ASSETS = [
     '/public/operador.php',
     '/public/css/operador.css',

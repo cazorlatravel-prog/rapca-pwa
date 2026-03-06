@@ -56,9 +56,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'delete') {
-        $id = (int)($_POST['id'] ?? 0);
-        $pdo->prepare("DELETE FROM ganaderos WHERE id = :id")->execute([':id' => $id]);
-        $msg = 'Ganadero eliminado';
+        if ($user['rol'] !== 'admin') {
+            $msg = 'Solo administradores pueden eliminar';
+            $msgType = 'danger';
+        } else {
+            $id = (int)($_POST['id'] ?? 0);
+            $pdo->prepare("DELETE FROM ganaderos WHERE id = :id")->execute([':id' => $id]);
+            $msg = 'Ganadero eliminado';
+        }
     }
 }
 
@@ -153,12 +158,14 @@ require __DIR__ . '/includes/header.php';
                     <td><?= $g['num_cabezas'] ?? '-' ?></td>
                     <td>
                         <a href="?edit=<?= $g['id'] ?>" class="btn btn-sm btn-outline-primary p-0 px-1"><i class="fas fa-edit"></i></a>
+                        <?php if ($user['rol'] === 'admin'): ?>
                         <form method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar?')">
                             <?= csrfField() ?>
                             <input type="hidden" name="action" value="delete">
                             <input type="hidden" name="id" value="<?= $g['id'] ?>">
                             <button class="btn btn-sm btn-outline-danger p-0 px-1"><i class="fas fa-trash"></i></button>
                         </form>
+                        <?php endif; ?>
                     </td>
                 </tr>
                 <?php endforeach; ?>

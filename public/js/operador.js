@@ -560,6 +560,98 @@
         });
     };
 
+    window.editarRegistro = async function(id) {
+        try {
+            const res = await fetch(CFG.apiUrl + '/registros.php?id=' + id, {
+                headers: { 'X-CSRF-Token': CFG.csrf }
+            });
+            const data = await res.json();
+            const reg = data.registro;
+            if (!reg) { showToast('Registro no encontrado', 'error'); return; }
+
+            const datos = typeof reg.datos === 'string' ? JSON.parse(reg.datos || '{}') : (reg.datos || {});
+            const tipo = reg.tipo;
+            const page = tipo === 'EI' ? 'ev' : tipo.toLowerCase();
+
+            state.editandoId = reg.id;
+
+            // Cargar campos comunes
+            if ($(page + '-fecha')) $(page + '-fecha').value = reg.fecha || '';
+            if ($(page + '-zona')) $(page + '-zona').value = reg.zona || '';
+            if ($(page + '-unidad')) $(page + '-unidad').value = reg.unidad || '';
+
+            // Pastoreo
+            if (datos.pastoreo) {
+                for (let i = 0; i < datos.pastoreo.length; i++) {
+                    const el = $(page + '-past' + (i + 1));
+                    if (el) el.value = datos.pastoreo[i] || '';
+                }
+            }
+            if (datos.observacionPastoreo) {
+                if ($(page + '-senal')) $(page + '-senal').value = datos.observacionPastoreo.senal || '';
+                if ($(page + '-veredas')) $(page + '-veredas').value = datos.observacionPastoreo.veredas || '';
+                if ($(page + '-cagarrutas')) $(page + '-cagarrutas').value = datos.observacionPastoreo.cagarrutas || '';
+            }
+
+            // Fotos
+            if ($(page + '-fotos')) $(page + '-fotos').value = datos.fotos || '';
+            if ($(page + '-observaciones')) $(page + '-observaciones').value = datos.observaciones || '';
+
+            // Datos EI específicos
+            if (tipo === 'EI') {
+                if (reg.transecto) setTransecto(parseInt(reg.transecto));
+
+                // Plantas
+                if (datos.plantas) {
+                    datos.plantas.forEach((pl, i) => {
+                        const idx = i + 1;
+                        const nombre = $('ev-planta' + idx + '-nombre');
+                        if (nombre) nombre.value = pl.nombre || '';
+                        (pl.notas || []).forEach((n, j) => {
+                            const inp = $('ev-planta' + idx + '-n' + (j + 1));
+                            if (inp) inp.value = n || '';
+                        });
+                    });
+                }
+                // Palatables
+                if (datos.palatables) {
+                    datos.palatables.forEach((pl, i) => {
+                        const idx = i + 1;
+                        const nombre = $('ev-palatable' + idx + '-nombre');
+                        if (nombre) nombre.value = pl.nombre || '';
+                        (pl.notas || []).forEach((n, j) => {
+                            const inp = $('ev-palatable' + idx + '-n' + (j + 1));
+                            if (inp) inp.value = n || '';
+                        });
+                    });
+                }
+                // Herbáceas
+                if (datos.herbaceas) {
+                    datos.herbaceas.forEach((h, i) => {
+                        const inp = $('ev-herb' + (i + 1));
+                        if (inp) inp.value = h || '';
+                    });
+                }
+                // Matorral
+                if (datos.matorral) {
+                    for (let p = 1; p <= 2; p++) {
+                        const pt = datos.matorral['punto' + p] || {};
+                        if ($('ev-mat' + p + 'cob')) $('ev-mat' + p + 'cob').value = pt.cobertura || '';
+                        if ($('ev-mat' + p + 'alt')) $('ev-mat' + p + 'alt').value = pt.altura || '';
+                        if ($('ev-mat' + p + 'esp')) $('ev-mat' + p + 'esp').value = pt.especie || '';
+                    }
+                    calcularMatorral();
+                }
+                calcularMedias();
+            }
+
+            showPage(page);
+            showToast('Registro cargado para editar', 'success');
+        } catch(e) {
+            showToast('Error al cargar registro: ' + e.message, 'error');
+        }
+    };
+
     window.eliminarRegistro = function(id, local) {
         if (!confirm('¿Eliminar este registro?')) return;
         if (local) {

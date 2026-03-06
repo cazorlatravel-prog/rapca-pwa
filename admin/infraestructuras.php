@@ -59,9 +59,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'delete') {
-        $id = (int)($_POST['id'] ?? 0);
-        $pdo->prepare("DELETE FROM infraestructuras WHERE id = :id")->execute([':id' => $id]);
-        $msg = 'Infraestructura eliminada';
+        if ($user['rol'] !== 'admin') {
+            $msg = 'Solo administradores pueden eliminar';
+            $msgType = 'danger';
+        } else {
+            $id = (int)($_POST['id'] ?? 0);
+            $pdo->prepare("DELETE FROM infraestructuras WHERE id = :id")->execute([':id' => $id]);
+            $msg = 'Infraestructura eliminada';
+        }
     }
 
     if ($action === 'import_excel') {

@@ -17,6 +17,10 @@ if ($id > 0) {
     $stmt->execute([':id' => $id]);
     $registros = [$stmt->fetch()];
     if (!$registros[0]) { die('Registro no encontrado'); }
+    // Operadores solo pueden ver sus propios registros
+    if ($user['rol'] !== 'admin' && (int)$registros[0]['operador_id'] !== $user['id']) {
+        die('Acceso denegado');
+    }
 } else {
     // PDF de todos los registros
     $where = '';

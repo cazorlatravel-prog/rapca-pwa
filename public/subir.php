@@ -37,14 +37,14 @@ $pdo = getDB();
 
 // Determine photo type from code
 $tipoFoto = 'general';
-if (str_contains($codigo, '_W1_')) $tipoFoto = 'comparativa_w1';
-elseif (str_contains($codigo, '_W2_')) $tipoFoto = 'comparativa_w2';
+if (strpos($codigo, '_W1_') !== false) $tipoFoto = 'comparativa_w1';
+elseif (strpos($codigo, '_W2_') !== false) $tipoFoto = 'comparativa_w2';
 
 // Determine record type
 $tipoRegistro = null;
-if (str_contains($codigo, '_VP_')) $tipoRegistro = 'VP';
-elseif (str_contains($codigo, '_EL_')) $tipoRegistro = 'EL';
-elseif (str_contains($codigo, '_EI_')) $tipoRegistro = 'EI';
+if (strpos($codigo, '_VP_') !== false) $tipoRegistro = 'VP';
+elseif (strpos($codigo, '_EL_') !== false) $tipoRegistro = 'EL';
+elseif (strpos($codigo, '_EI_') !== false) $tipoRegistro = 'EI';
 
 // Upload to Cloudinary
 $folder = 'rapca/' . ($tipoRegistro ?? 'misc') . '/' . ($unidad ?: 'sin_unidad');

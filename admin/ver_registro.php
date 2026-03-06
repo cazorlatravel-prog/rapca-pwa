@@ -16,6 +16,12 @@ $stmt->execute([':id' => $id]);
 $reg = $stmt->fetch();
 if (!$reg) { header('Location: /admin/registros.php'); exit; }
 
+// Operadores solo pueden ver sus propios registros
+if ($user['rol'] !== 'admin' && (int)$reg['operador_id'] !== $user['id']) {
+    header('Location: /admin/registros.php');
+    exit;
+}
+
 $stmtF = $pdo->prepare("SELECT * FROM fotos WHERE registro_id = :id ORDER BY codigo");
 $stmtF->execute([':id' => $id]);
 $fotos = $stmtF->fetchAll();
@@ -180,7 +186,7 @@ require __DIR__ . '/includes/header.php';
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-const fotosArr = <?= json_encode(array_column($fotos, 'url_cloudinary')) ?>;
+const fotosArr = <?= json_encode(array_column($fotos, 'url_cloudinary'), JSON_HEX_TAG | JSON_HEX_AMP) ?>;
 let lbIdx = 0;
 
 function abrirLightbox(i) {
