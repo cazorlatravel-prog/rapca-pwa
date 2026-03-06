@@ -1,5 +1,6 @@
 <?php
 require_once 'config.php';
+require_once __DIR__ . '/includes/rate_limit.php';
 
 $allowedOrigin = (!empty($_SERVER['HTTP_ORIGIN'])) ? $_SERVER['HTTP_ORIGIN'] : '';
 $trustedOrigins = ['https://rapca.app', 'https://www.rapca.app', 'http://localhost:8000'];
@@ -107,6 +108,11 @@ function obtenerUsuarioPorToken($pdo, $token) {
 switch ($action) {
 
     case 'login':
+        if (!checkRateLimit()) {
+            http_response_code(429);
+            echo json_encode(['error' => 'Demasiados intentos. Espera 15 minutos.']);
+            exit;
+        }
         $email = trim($input['email'] ?? '');
         $pass = $input['password'] ?? '';
         if (!$email || !$pass) {
@@ -117,6 +123,7 @@ switch ($action) {
         $stmt->execute([$email]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$user || !password_verify($pass, $user['password'])) {
+            recordFailedAttempt();
             echo json_encode(['error' => 'Credenciales incorrectas']);
             exit;
         }
@@ -124,6 +131,7 @@ switch ($action) {
             echo json_encode(['error' => 'Usuario desactivado. Contacta al administrador']);
             exit;
         }
+        clearRateLimit();
         $token = generarToken();
         $pdo->prepare("INSERT INTO sesiones (usuario_id, token) VALUES (?, ?)")->execute([$user['id'], $token]);
         try { $pdo->prepare("UPDATE usuarios SET ultimo_login = NOW() WHERE id = ?")->execute([$user['id']]); } catch (PDOException $e) { /* columna puede no existir */ }
@@ -170,6 +178,10 @@ switch ($action) {
         $nuevoRol = trim($input['nuevo_rol'] ?? 'operador');
         if (!$nuevoEmail || !$nuevoNombre || !$nuevoPass) {
             echo json_encode(['error' => 'Email, nombre y contraseña requeridos']);
+            exit;
+        }
+        if (strlen($nuevoPass) < 8) {
+            echo json_encode(['error' => 'La contraseña debe tener al menos 8 caracteres']);
             exit;
         }
         if (!in_array($nuevoRol, ['admin', 'operador'])) $nuevoRol = 'operador';
@@ -231,6 +243,10 @@ switch ($action) {
         $nuevaPass = $input['nueva_password'] ?? '';
         if (!$userId || !$nuevaPass) {
             echo json_encode(['error' => 'ID usuario y nueva contraseña requeridos']);
+            exit;
+        }
+        if (strlen($nuevaPass) < 8) {
+            echo json_encode(['error' => 'La contraseña debe tener al menos 8 caracteres']);
             exit;
         }
         $hash = password_hash($nuevaPass, PASSWORD_BCRYPT);

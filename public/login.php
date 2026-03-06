@@ -5,6 +5,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/rate_limit.php';
 
 if (($_GET['action'] ?? '') === 'logout') {
     logout();
@@ -23,15 +24,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
 
-    if ($email === '' || $password === '') {
+    if (!checkRateLimit()) {
+        $error = 'Demasiados intentos. Espera 15 minutos.';
+    } elseif ($email === '' || $password === '') {
         $error = 'Introduce email y contraseña';
     } else {
         $user = login($email, $password);
         if ($user) {
+            clearRateLimit();
             header('Location: /public/operador.php');
             exit;
         } else {
+            recordFailedAttempt();
+            $remaining = getRateLimitRemaining();
             $error = 'Email o contraseña incorrectos';
+            if ($remaining <= 2 && $remaining > 0) {
+                $error .= " ({$remaining} intentos restantes)";
+            }
         }
     }
 }

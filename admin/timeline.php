@@ -154,7 +154,7 @@ foreach ($registros as $r):
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-const fotosRegistro = <?= json_encode($fotosPorRegistro) ?>;
+const fotosRegistro = <?= json_encode($fotosPorRegistro, JSON_HEX_TAG | JSON_HEX_AMP) ?>;
 let lbRegistroId = null, lbIdx = 0, lbFotos = [];
 
 function abrirLightbox(regId, idx) {

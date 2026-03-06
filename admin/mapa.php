@@ -86,10 +86,10 @@ require __DIR__ . '/includes/header.php';
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script>
 // Datos del servidor
-const registrosData = <?= json_encode($registros) ?>;
-const infrasData = <?= json_encode($infras) ?>;
-const fotosData = <?= json_encode($fotos) ?>;
-const capasData = <?= json_encode($capas) ?>;
+const registrosData = <?= json_encode($registros, JSON_HEX_TAG | JSON_HEX_AMP) ?>;
+const infrasData = <?= json_encode($infras, JSON_HEX_TAG | JSON_HEX_AMP) ?>;
+const fotosData = <?= json_encode($fotos, JSON_HEX_TAG | JSON_HEX_AMP) ?>;
+const capasData = <?= json_encode($capas, JSON_HEX_TAG | JSON_HEX_AMP) ?>;
 
 // Colores por tipo
 const COLORES = { VP: '#88d8b0', EL: '#2ecc71', EI: '#fd9853' };

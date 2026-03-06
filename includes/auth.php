@@ -38,6 +38,8 @@ function login(string $email, string $password): array|false {
     $_SESSION['user_name']  = $user['nombre'];
     $_SESSION['user_email'] = $user['email'];
     $_SESSION['user_rol']   = $user['rol'];
+    $_SESSION['login_time'] = time();
+    $_SESSION['last_activity'] = time();
 
     $pdo->prepare("UPDATE usuarios SET ultimo_login = NOW() WHERE id = :id")
         ->execute([':id' => $user['id']]);
@@ -46,6 +48,17 @@ function login(string $email, string $password): array|false {
 }
 
 function logout(): void {
+    // Invalidar tokens de la tabla sesiones (sistema legacy)
+    if (isset($_SESSION['user_id'])) {
+        try {
+            $pdo = getDB();
+            $pdo->prepare("DELETE FROM sesiones WHERE usuario_id = :uid")
+                ->execute([':uid' => $_SESSION['user_id']]);
+        } catch (\Exception $e) {
+            // Tabla puede no existir en instalaciones solo-admin
+        }
+    }
+
     $_SESSION = [];
     if (ini_get('session.use_cookies')) {
         $params = session_get_cookie_params();
@@ -57,7 +70,21 @@ function logout(): void {
 }
 
 function isLoggedIn(): bool {
-    return isset($_SESSION['user_id']);
+    if (!isset($_SESSION['user_id'])) return false;
+
+    $now = time();
+    // Timeout absoluto: 8 horas desde login
+    if (isset($_SESSION['login_time']) && ($now - $_SESSION['login_time']) > 28800) {
+        logout();
+        return false;
+    }
+    // Timeout de inactividad: 2 horas
+    if (isset($_SESSION['last_activity']) && ($now - $_SESSION['last_activity']) > 7200) {
+        logout();
+        return false;
+    }
+    $_SESSION['last_activity'] = $now;
+    return true;
 }
 
 function currentUser(): ?array {

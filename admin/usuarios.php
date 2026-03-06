@@ -27,6 +27,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($nombre === '' || $email === '' || $password === '') {
             $msg = 'Todos los campos son obligatorios';
             $msgType = 'danger';
+        } elseif (strlen($password) < 8) {
+            $msg = 'La contraseña debe tener al menos 8 caracteres';
+            $msgType = 'danger';
         } else {
             $exists = $pdo->prepare("SELECT id FROM usuarios WHERE email = :email");
             $exists->execute([':email' => $email]);
@@ -55,7 +58,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'change_password') {
         $id = (int)($_POST['id'] ?? 0);
         $newPw = $_POST['new_password'] ?? '';
-        if ($newPw !== '') {
+        if ($newPw === '') {
+            $msg = 'La contraseña no puede estar vacía';
+            $msgType = 'danger';
+        } elseif (strlen($newPw) < 8) {
+            $msg = 'La contraseña debe tener al menos 8 caracteres';
+            $msgType = 'danger';
+        } else {
             $pdo->prepare("UPDATE usuarios SET password = :pw WHERE id = :id")
                 ->execute([':pw' => hashPw($newPw), ':id' => $id]);
             $msg = 'Contraseña actualizada';
@@ -179,25 +188,41 @@ require __DIR__ . '/includes/header.php';
     </div>
 </div>
 
-<!-- Form oculto para cambiar contraseña -->
-<form id="formPw" method="POST" style="display:none">
-    <?= csrfField() ?>
-    <input type="hidden" name="action" value="change_password">
-    <input type="hidden" name="id" id="pwUserId">
-    <input type="hidden" name="new_password" id="pwNewPassword">
-</form>
+<!-- Modal cambiar contraseña -->
+<div class="modal fade" id="modalPw" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <form method="POST" id="formPw">
+                <?= csrfField() ?>
+                <input type="hidden" name="action" value="change_password">
+                <input type="hidden" name="id" id="pwUserId">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title fw-bold">Cambiar contraseña</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label small fw-semibold">Nueva contraseña</label>
+                    <input type="password" name="new_password" id="pwNewPassword" class="form-control form-control-sm"
+                           required minlength="8" placeholder="Mínimo 8 caracteres" autocomplete="new-password">
+                    <div class="form-text">Mínimo 8 caracteres.</div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-sm btn-dark">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
 </div><!-- /container -->
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 function cambiarPw(id) {
-    const pw = prompt('Nueva contraseña:');
-    if (pw && pw.length >= 4) {
-        document.getElementById('pwUserId').value = id;
-        document.getElementById('pwNewPassword').value = pw;
-        document.getElementById('formPw').submit();
-    }
+    document.getElementById('pwUserId').value = id;
+    document.getElementById('pwNewPassword').value = '';
+    new bootstrap.Modal(document.getElementById('modalPw')).show();
 }
 </script>
 </body>

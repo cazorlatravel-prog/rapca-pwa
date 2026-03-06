@@ -254,7 +254,7 @@ require __DIR__ . '/includes/header.php';
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 // Datos para charts
-const diasData = <?= json_encode($diasActividad) ?>;
+const diasData = <?= json_encode($diasActividad, JSON_HEX_TAG | JSON_HEX_AMP) ?>;
 const dias = Object.keys(diasData);
 const vpData = dias.map(d => diasData[d].VP);
 const elData = dias.map(d => diasData[d].EL);
