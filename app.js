@@ -1885,8 +1885,16 @@ function validarSesion(){
   fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'validar',token:sesionActual.token})})
   .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
   .then(function(data){
-    if(data.ok){sesionActual.nombre=data.usuario.nombre;sesionActual.rol=data.usuario.rol;localStorage.setItem('rapca_sesion',JSON.stringify(sesionActual));ocultarLoginMostrarApp();}
-    else{localStorage.removeItem('rapca_sesion');sesionActual=null;document.getElementById('loginOverlay').classList.remove('hidden');}
+    if(data.ok){
+      sesionActual.nombre=data.usuario.nombre;sesionActual.rol=data.usuario.rol;
+      localStorage.setItem('rapca_sesion',JSON.stringify(sesionActual));
+      ocultarLoginMostrarApp();
+    }else{
+      // Servidor rechazó el token — NO cerrar sesión, usar datos guardados localmente
+      // El usuario ya se autenticó antes, no forzar re-login por error del servidor
+      console.warn('Servidor rechazó token, usando sesión local guardada:', data.error||'');
+      ocultarLoginMostrarApp();
+    }
   })
   .catch(function(){ocultarLoginMostrarApp();}); // Sin servidor: usar sesión guardada
 }
@@ -2008,18 +2016,21 @@ function cargarListaUsuarios(){
         console.log('Usuarios del servidor:',data.usuarios.length);
         // Fusionar servidor + locales (mantener usuarios que solo existen localmente)
         var locales=getUsuariosLocal();
-        var merged=data.usuarios.map(function(u){
-          var local=locales.find(function(l){return l.email.toLowerCase()===u.email.toLowerCase();});
-          return{id:u.id,email:u.email,nombre:u.nombre,rol:u.rol,activo:u.activo,passwordHash:local?local.passwordHash:undefined,password:local?local.password:undefined};
-        });
-        // Añadir usuarios que solo existen localmente (no están en servidor)
-        locales.forEach(function(l){
-          if(!merged.find(function(m){return m.email.toLowerCase()===l.email.toLowerCase();})){
-            merged.push(l);
+        // Fusionar: actualizar datos de servidor en locales, añadir nuevos del servidor
+        var emailsLocales={};
+        locales.forEach(function(l){emailsLocales[l.email.toLowerCase()]=l;});
+        data.usuarios.forEach(function(u){
+          var local=emailsLocales[u.email.toLowerCase()];
+          if(local){
+            // Actualizar datos del servidor pero PRESERVAR passwordHash local
+            local.id=u.id;local.nombre=u.nombre;local.rol=u.rol;local.activo=u.activo;
+          }else{
+            // Usuario nuevo del servidor — añadir sin password
+            locales.push({id:u.id,email:u.email,nombre:u.nombre,passwordHash:'',rol:u.rol,activo:u.activo});
           }
         });
-        guardarUsuariosLocal(merged);
-        renderUsuarios(merged);
+        guardarUsuariosLocal(locales);
+        renderUsuarios(locales);
       }else{
         console.warn('listar_usuarios error:',JSON.stringify(data));
         renderUsuarios(getUsuariosLocal());
@@ -2056,27 +2067,28 @@ function toggleUsuario(id){
 function cambiarPasswordUsuario(id){
   var nueva=prompt('Nueva contraseña:');
   if(!nueva||!nueva.trim())return;
+  function guardarHashLocal(pass){
+    hashPassword(pass).then(function(h){
+      var users=getUsuariosLocal();
+      users.forEach(function(u){if(u.id===id){u.passwordHash=h;delete u.password;}});
+      guardarUsuariosLocal(users);
+    });
+  }
   if(isOnline){
     fetch(AUTH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'cambiar_password',token:sesionActual.token,usuario_id:id,nueva_password:nueva.trim()})})
     .then(function(r){return r.json();})
     .then(function(data){
       if(data.ok){
-        var users=getUsuariosLocal();
-        users.forEach(function(u){if(u.id===id)u.password=nueva.trim();});
-        guardarUsuariosLocal(users);
+        guardarHashLocal(nueva.trim());
         showToast('Contraseña cambiada en servidor','success');
       }else{showToast(data.error||'Error','error');}
     })
     .catch(function(){
-      var users=getUsuariosLocal();
-      users.forEach(function(u){if(u.id===id)u.password=nueva.trim();});
-      guardarUsuariosLocal(users);
+      guardarHashLocal(nueva.trim());
       showToast('Contraseña cambiada (solo local)','warning');
     });
   }else{
-    var users=getUsuariosLocal();
-    users.forEach(function(u){if(u.id===id)u.password=nueva.trim();});
-    guardarUsuariosLocal(users);
+    guardarHashLocal(nueva.trim());
     showToast('Contraseña cambiada (solo local, sin conexión)','warning');
   }
 }
@@ -2380,8 +2392,12 @@ function sincronizarUsuariosDesdeServidor(){
     var nuevosLocal=0;
     data.usuarios.forEach(function(su){
       if(!emailsLocales[su.email.toLowerCase()]){
-        locales.push({id:su.id,email:su.email,nombre:su.nombre,password:'',rol:su.rol,activo:su.activo});
+        locales.push({id:su.id,email:su.email,nombre:su.nombre,passwordHash:'',rol:su.rol,activo:su.activo});
         nuevosLocal++;
+      } else {
+        // Actualizar datos del usuario local con info del servidor (nombre, rol, activo)
+        var local=locales.find(function(l){return l.email.toLowerCase()===su.email.toLowerCase();});
+        if(local){local.id=su.id;local.nombre=su.nombre;local.rol=su.rol;local.activo=su.activo;}
       }
     });
     if(nuevosLocal>0){
@@ -2457,8 +2473,11 @@ function initApp(){
   window.addEventListener('offline',function(){isOnline=false;updateSyncStatus();registrarBackgroundSync();});
   document.addEventListener('click',function(e){if(!e.target.closest('.autocomplete-wrapper'))document.querySelectorAll('.autocomplete-list').forEach(function(l){l.classList.remove('show');});if(!e.target.closest('.mapa-search-bar')&&!e.target.closest('.mapa-search-float')){document.querySelectorAll('.mapa-search-results').forEach(function(r){r.classList.remove('show');});}});
   if(window.matchMedia('(display-mode: standalone)').matches){var b=document.getElementById('installBtn');if(b)b.style.display='none';}
-  // Cargar listas de admin si es admin
-  if(sesionActual&&sesionActual.rol==='admin'&&isOnline){cargarListaUsuarios();sincronizarUsuariosDesdeServidor();}
+  // Cargar listas de admin si es admin (siempre mostrar locales, sincronizar si online)
+  if(sesionActual&&sesionActual.rol==='admin'){
+    cargarListaUsuarios();
+    if(isOnline){sincronizarUsuariosDesdeServidor();}
+  }
   // Sincronizar datos con el servidor (recuperar registros e infraestructuras)
   sincronizarDesdeServidor();
 }
