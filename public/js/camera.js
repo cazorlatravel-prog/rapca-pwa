@@ -206,95 +206,245 @@
     }
 
     // ==============================================================
-    // PREVIEW
+    // PREVIEW & ANNOTATIONS
     // ==============================================================
+    let lastTapTime = 0;
+    let previewScale = 1; // ratio preview canvas / original (3060)
+
     function mostrarPreview() {
         previewCanvas = $('preview-canvas');
         previewCtx = previewCanvas.getContext('2d');
         anotaciones = [];
         modoAnotacion = false;
 
+        // Reset UI
+        const tools = $('preview-tools');
+        if (tools) tools.classList.remove('show');
+        const btnA = $('btnAnotar');
+        if (btnA) { btnA.textContent = '\uD83D\uDD34 Anotar'; btnA.classList.remove('active'); }
+        const btnAc = $('btnAceptar');
+        if (btnAc) btnAc.textContent = '\u2714 Aceptar';
+
+        const container = $('preview-container');
         const img = new Image();
         img.onload = function() {
-            previewCanvas.width = img.width;
-            previewCanvas.height = img.height;
-            previewCtx.drawImage(img, 0, 0);
+            // Calcular tamaño responsivo manteniendo 3:4
+            const cW = container.clientWidth || 300;
+            const cH = container.clientHeight || 400;
+            const aspect = 3 / 4;
+            let pW, pH;
+            if (cW / cH > aspect) { pH = cH; pW = Math.round(pH * aspect); }
+            else { pW = cW; pH = Math.round(pW / aspect); }
+
+            previewCanvas.width = pW;
+            previewCanvas.height = pH;
+            previewScale = pW / 3060;
+            previewCtx.drawImage(img, 0, 0, 3060, 4080, 0, 0, pW, pH);
         };
         img.src = capturedImageData;
 
         $('preview-modal').classList.add('active');
 
-        // Touch/click for annotations
-        previewCanvas.onclick = function(e) {
-            if (!modoAnotacion) return;
-            const rect = previewCanvas.getBoundingClientRect();
-            const scaleX = previewCanvas.width / rect.width;
-            const scaleY = previewCanvas.height / rect.height;
-            const x = (e.clientX - rect.left) * scaleX;
-            const y = (e.clientY - rect.top) * scaleY;
+        // Limpiar listeners previos clonando el canvas
+        const oldCanvas = previewCanvas;
+        const newCanvas = oldCanvas.cloneNode(true);
+        oldCanvas.parentNode.replaceChild(newCanvas, oldCanvas);
+        previewCanvas = newCanvas;
+        previewCtx = previewCanvas.getContext('2d');
 
-            anotaciones.push({ x, y, num: anotaciones.length + 1 });
-            dibujarAnotaciones();
+        // Redibujar después de clonar
+        const img2 = new Image();
+        img2.onload = function() {
+            const cW = container.clientWidth || 300;
+            const cH = container.clientHeight || 400;
+            const aspect = 3 / 4;
+            let pW, pH;
+            if (cW / cH > aspect) { pH = cH; pW = Math.round(pH * aspect); }
+            else { pW = cW; pH = Math.round(pW / aspect); }
+            previewCanvas.width = pW;
+            previewCanvas.height = pH;
+            previewScale = pW / 3060;
+            previewCtx.drawImage(img2, 0, 0, 3060, 4080, 0, 0, pW, pH);
         };
+        img2.src = capturedImageData;
+
+        // Touch para móvil
+        previewCanvas.addEventListener('touchend', function(e) {
+            if (!modoAnotacion) return;
+            e.preventDefault();
+            const t = e.changedTouches[0];
+            handleAnnotationTap(t.clientX, t.clientY);
+        }, { passive: false });
+
+        // Click para desktop
+        previewCanvas.addEventListener('click', function(e) {
+            handleAnnotationTap(e.clientX, e.clientY);
+        });
+    }
+
+    function handleAnnotationTap(cx, cy) {
+        if (!modoAnotacion) return;
+        // Debounce touch+click
+        const now = Date.now();
+        if (now - lastTapTime < 300) return;
+        lastTapTime = now;
+
+        const rect = previewCanvas.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return;
+
+        const relX = cx - rect.left;
+        const relY = cy - rect.top;
+        // Validar dentro del canvas
+        if (relX < 0 || relY < 0 || relX > rect.width || relY > rect.height) return;
+
+        // Escalar de visual a coordenadas originales (3060x4080)
+        const scaleX = previewCanvas.width / rect.width;
+        const scaleY = previewCanvas.height / rect.height;
+        const canvasX = relX * scaleX;
+        const canvasY = relY * scaleY;
+        const s = previewScale || 1;
+        const fullX = Math.max(0, Math.min(3060, canvasX / s));
+        const fullY = Math.max(0, Math.min(4080, canvasY / s));
+
+        const radio = parseInt(($('circleSize') || {}).value, 10) || 200;
+        const texto = ($('annotationText') || {}).value || '';
+        anotaciones.push({ x: fullX, y: fullY, radio: radio, texto: texto.trim(), num: anotaciones.length + 1 });
+        if ($('annotationText')) $('annotationText').value = '';
+
+        dibujarVistaPrevia();
+        window.showToast('Punto ' + anotaciones.length + ' marcado', 'success');
     }
 
     window.cerrarPreview = function() {
         $('preview-modal').classList.remove('active');
-        // Reopen camera
         abrirCamara(camaraTipo, camaraSubtipo);
     };
 
     window.toggleAnotacion = function() {
         modoAnotacion = !modoAnotacion;
-        const btn = document.querySelector('.btn-annotate');
-        if (btn) btn.classList.toggle('active', modoAnotacion);
+        const btn = $('btnAnotar');
+        const tools = $('preview-tools');
+        if (modoAnotacion) {
+            if (btn) { btn.textContent = '\u2716 Cerrar'; btn.classList.add('active'); }
+            if (tools) tools.classList.add('show');
+        } else {
+            if (btn) { btn.textContent = '\uD83D\uDD34 Anotar'; btn.classList.remove('active'); }
+            if (tools) tools.classList.remove('show');
+        }
+        dibujarVistaPrevia();
     };
 
-    function dibujarAnotaciones() {
-        // Redraw image
+    window.deshacerAnotacion = function() {
+        if (anotaciones.length === 0) { window.showToast('Sin anotaciones', 'info'); return; }
+        anotaciones.pop();
+        dibujarVistaPrevia();
+        window.showToast('Anotación eliminada', 'info');
+    };
+
+    function dibujarVistaPrevia() {
         const img = new Image();
         img.onload = function() {
-            previewCtx.drawImage(img, 0, 0);
-            // Draw circles
-            anotaciones.forEach(a => {
-                previewCtx.beginPath();
-                previewCtx.arc(a.x, a.y, 60, 0, Math.PI * 2);
-                previewCtx.strokeStyle = '#e74c3c';
-                previewCtx.lineWidth = 6;
-                previewCtx.stroke();
+            const s = previewScale || 1;
+            previewCtx.drawImage(img, 0, 0, 3060, 4080, 0, 0, previewCanvas.width, previewCanvas.height);
 
-                previewCtx.fillStyle = '#e74c3c';
+            for (let i = 0; i < anotaciones.length; i++) {
+                const a = anotaciones[i];
+                const ax = a.x * s, ay = a.y * s, ar = a.radio * s;
+
+                previewCtx.strokeStyle = '#FF0000';
+                previewCtx.lineWidth = Math.max(2, ar * 0.1);
                 previewCtx.beginPath();
-                previewCtx.arc(a.x, a.y, 30, 0, Math.PI * 2);
+                previewCtx.arc(ax, ay, ar, 0, Math.PI * 2);
+                previewCtx.stroke();
+                previewCtx.fillStyle = 'rgba(255,0,0,0.15)';
                 previewCtx.fill();
 
-                previewCtx.fillStyle = '#fff';
-                previewCtx.font = 'bold 36px sans-serif';
+                previewCtx.fillStyle = '#FF0000';
+                previewCtx.font = 'bold ' + Math.max(12, Math.round(ar * 0.6)) + 'px Arial';
                 previewCtx.textAlign = 'center';
                 previewCtx.textBaseline = 'middle';
-                previewCtx.fillText(String(a.num), a.x, a.y);
-            });
+                previewCtx.fillText(String(i + 1), ax, ay);
+            }
+            previewCtx.textAlign = 'left';
+            previewCtx.textBaseline = 'alphabetic';
+
+            // Actualizar botón aceptar con conteo
+            const btnAc = $('btnAceptar');
+            if (btnAc) btnAc.textContent = anotaciones.length > 0
+                ? '\u2714 Aceptar (' + anotaciones.length + ')'
+                : '\u2714 Aceptar';
         };
         img.src = capturedImageData;
+    }
+
+    function dibujarAnotacionesEnCanvas(ctx, w, h) {
+        // Dibujar círculos en coordenadas originales (3060x4080)
+        for (let i = 0; i < anotaciones.length; i++) {
+            const a = anotaciones[i];
+            ctx.strokeStyle = '#FF0000';
+            ctx.lineWidth = Math.max(8, a.radio * 0.12);
+            ctx.beginPath();
+            ctx.arc(a.x, a.y, a.radio, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.fillStyle = 'rgba(255,0,0,0.12)';
+            ctx.fill();
+            ctx.fillStyle = '#FF0000';
+            ctx.font = 'bold ' + Math.max(40, Math.round(a.radio * 0.7)) + 'px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.shadowColor = 'rgba(0,0,0,0.6)';
+            ctx.shadowBlur = 6;
+            ctx.fillText(String(i + 1), a.x, a.y);
+        }
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+
+        // Banner de advertencia con lista de anotaciones
+        const bannerH = 75 + anotaciones.length * 55;
+        ctx.fillStyle = 'rgba(180,0,0,0.85)';
+        ctx.beginPath();
+        ctx.roundRect(20, 20, w - 40, bannerH, 20);
+        ctx.fill();
+        ctx.fillStyle = '#FFD700';
+        ctx.font = 'bold 55px Arial';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText('\u26A0 ANOTACIONES:', 50, 35);
+        ctx.fillStyle = '#fff';
+        ctx.font = '42px Arial';
+        for (let i = 0; i < anotaciones.length; i++) {
+            ctx.fillText((i + 1) + '. ' + (anotaciones[i].texto || 'Punto señalado'), 50, 90 + i * 55);
+        }
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
     }
 
     // ==============================================================
     // ACCEPT PHOTO
     // ==============================================================
     window.aceptarFoto = function() {
-        if (!previewCanvas || !pendingCodigo) return;
+        if (!pendingCodigo) return;
 
-        // Get final image (with annotations)
-        const finalDataUrl = previewCanvas.toDataURL('image/jpeg', 0.95);
+        // Crear canvas a resolución original (3060x4080) con anotaciones
+        const fullCanvas = document.createElement('canvas');
+        fullCanvas.width = 3060;
+        fullCanvas.height = 4080;
+        const fullCtx = fullCanvas.getContext('2d');
 
-        // Create thumbnail (400x533 @ 50% quality)
-        const thumbCanvas = document.createElement('canvas');
-        thumbCanvas.width = 400;
-        thumbCanvas.height = 533;
-        const thumbCtx = thumbCanvas.getContext('2d');
         const img = new Image();
         img.onload = function() {
-            thumbCtx.drawImage(img, 0, 0, 400, 533);
+            fullCtx.drawImage(img, 0, 0, 3060, 4080);
+
+            // Dibujar anotaciones en la imagen final
+            if (anotaciones.length > 0) {
+                dibujarAnotacionesEnCanvas(fullCtx, 3060, 4080);
+            }
+
+            // Thumbnail (400x533 @ 50%)
+            const thumbCanvas = document.createElement('canvas');
+            thumbCanvas.width = 400;
+            thumbCanvas.height = 533;
+            thumbCanvas.getContext('2d').drawImage(fullCanvas, 0, 0, 3060, 4080, 0, 0, 400, 533);
             const thumbData = thumbCanvas.toDataURL('image/jpeg', 0.5);
 
             // Save thumbnail to IndexedDB + memory
@@ -304,12 +454,12 @@
             }
             window.RAPCA_STATE.fotosCacheMemoria[pendingCodigo] = thumbData;
 
-            // Queue upload (85% quality)
-            const uploadCanvas = document.createElement('canvas');
-            uploadCanvas.width = previewCanvas.width;
-            uploadCanvas.height = previewCanvas.height;
-            uploadCanvas.getContext('2d').drawImage(previewCanvas, 0, 0);
-            const uploadData = uploadCanvas.toDataURL('image/jpeg', 0.85);
+            // Queue upload (85% quality, mitad de resolución)
+            const upCanvas = document.createElement('canvas');
+            upCanvas.width = 1530;
+            upCanvas.height = 2040;
+            upCanvas.getContext('2d').drawImage(fullCanvas, 0, 0, 3060, 4080, 0, 0, 1530, 2040);
+            const uploadData = upCanvas.toDataURL('image/jpeg', 0.85);
 
             const page = camaraTipo === 'EI' ? 'ev' : camaraTipo.toLowerCase();
             const unidad = document.getElementById(page + '-unidad')?.value || '';
@@ -322,19 +472,27 @@
                 });
             }
 
-            // Auto-download full res
-            const link = document.createElement('a');
-            link.href = finalDataUrl;
-            link.download = pendingCodigo + '.jpg';
-            link.click();
+            // Auto-download full res (95% quality)
+            fullCanvas.toBlob(function(b) {
+                const u = URL.createObjectURL(b);
+                const link = document.createElement('a');
+                link.href = u;
+                link.download = pendingCodigo + '.jpg';
+                link.click();
+                setTimeout(function() { URL.revokeObjectURL(u); }, 5000);
+            }, 'image/jpeg', 0.95);
 
             // Add to form
             agregarFotoALista(pendingCodigo);
 
-            window.showToast('Foto guardada: ' + pendingCodigo, 'success');
+            const online = window.RAPCA_STATE.isOnline;
+            window.showToast(online ? '\uD83D\uDCF7\u2601\uFE0F ' + pendingCodigo : '\uD83D\uDCF7 ' + pendingCodigo + ' (offline)', 'success');
+            if (online) window.procesarSubidasPendientes();
             pendingCodigo = null;
+            anotaciones = [];
+            modoAnotacion = false;
         };
-        img.src = finalDataUrl;
+        img.src = capturedImageData;
 
         $('preview-modal').classList.remove('active');
     };

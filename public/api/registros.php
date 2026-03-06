@@ -17,8 +17,22 @@ if (!isLoggedIn()) {
 $pdo = getDB();
 $user = currentUser();
 
-// GET: listar registros
+// GET: listar registros o individual por ID
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    // Registro individual
+    $id = (int)($_GET['id'] ?? 0);
+    if ($id > 0) {
+        $stmt = $pdo->prepare("SELECT r.* FROM registros r WHERE r.id = :id");
+        $stmt->execute([':id' => $id]);
+        $reg = $stmt->fetch();
+        if ($reg && ($user['rol'] === 'admin' || (int)$reg['operador_id'] === $user['id'])) {
+            echo json_encode(['registro' => $reg]);
+        } else {
+            echo json_encode(['ok' => false, 'error' => 'No encontrado']);
+        }
+        exit;
+    }
+
     $tipo = $_GET['tipo'] ?? '';
     $q = $_GET['q'] ?? '';
 

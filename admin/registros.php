@@ -86,8 +86,8 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $registros = $stmt->fetchAll();
 
-// Operadores para filtro
-$operadores = $pdo->query("SELECT DISTINCT operador_nombre, operador_email FROM registros WHERE operador_nombre IS NOT NULL ORDER BY operador_nombre")->fetchAll();
+// Operadores para filtro — desde tabla usuarios (incluye los que aún no tienen registros)
+$operadores = $pdo->query("SELECT id, nombre, email FROM usuarios WHERE activo = 1 ORDER BY nombre")->fetchAll();
 
 // Unidades para filtro
 $unidades = $pdo->query("SELECT DISTINCT unidad FROM registros ORDER BY unidad")->fetchAll();
@@ -128,9 +128,9 @@ require __DIR__ . '/includes/header.php';
             <select name="operador" class="form-select form-select-sm">
                 <option value="">Todos</option>
                 <?php foreach ($operadores as $op): ?>
-                <option value="<?= htmlspecialchars($op['operador_email']) ?>"
-                    <?= $filtroOperador === $op['operador_email'] ? 'selected' : '' ?>>
-                    <?= htmlspecialchars($op['operador_nombre']) ?>
+                <option value="<?= htmlspecialchars($op['email']) ?>"
+                    <?= $filtroOperador === $op['email'] ? 'selected' : '' ?>>
+                    <?= htmlspecialchars($op['nombre']) ?> (<?= htmlspecialchars($op['email']) ?>)
                 </option>
                 <?php endforeach; ?>
             </select>

@@ -538,6 +538,7 @@
                         ${r.enviado ? '' : ' <span style="color:#f39c12">(pendiente)</span>'}
                     </div>
                     <div class="panel-item-actions">
+                        ${r.id ? `<button onclick="exportarPDF(${r.id}, ${!!r.local})">PDF</button>` : ''}
                         ${r.id && !r.local ? `<button onclick="editarRegistro(${r.id})">Editar</button>` : ''}
                         ${r.id ? `<button class="delete" onclick="eliminarRegistro(${r.id}, ${!!r.local})">Eliminar</button>` : ''}
                     </div>
@@ -717,6 +718,202 @@
             } catch(e) {}
         });
     }
+
+    // ==============================================================
+    // PDF EXPORT
+    // ==============================================================
+    function generarHTMLRegistro(reg) {
+        const datos = typeof reg.datos === 'string' ? JSON.parse(reg.datos || '{}') : (reg.datos || {});
+        const tipo = reg.tipo || '';
+        const badgeColor = tipo === 'VP' ? '#88d8b0' : tipo === 'EL' ? '#2ecc71' : '#fd9853';
+        const badgeText = tipo === 'VP' ? '#1a3d2e' : '#fff';
+
+        let html = `<div style="page-break-inside:avoid;margin-bottom:30px;">
+        <div style="background:#1a3d2e;color:#fff;padding:15px 20px;border-radius:8px;margin-bottom:15px;display:flex;justify-content:space-between;align-items:center">
+            <div><h2 style="margin:0;font-size:16pt">RAPCA Campo — Informe ${escapeHTML(tipo)}</h2>
+            <div style="font-size:9pt;opacity:0.8">${escapeHTML(reg.unidad)} | ${escapeHTML(reg.fecha)}${reg.transecto ? ' | T' + reg.transecto : ''}</div></div>
+            <div style="text-align:right"><div style="font-size:9pt;opacity:0.8">Operador: ${escapeHTML(reg.operador_nombre || '')}</div>
+            ${reg.lat ? `<div style="font-size:9pt;opacity:0.8">${reg.lat}, ${reg.lon}</div>` : ''}</div>
+        </div>`;
+
+        // Datos generales
+        html += `<div style="border:1px solid #ddd;border-radius:6px;margin-bottom:12px;overflow:hidden">
+            <div style="background:#f5f5f0;padding:8px 12px;font-weight:bold;font-size:10pt;border-bottom:1px solid #ddd">Datos Generales</div>
+            <div style="padding:10px 12px">
+                <table style="width:100%;border-collapse:collapse;font-size:9pt">
+                <tr><td style="width:100px;font-weight:bold;padding:4px 8px;border:1px solid #ddd">Tipo</td><td style="padding:4px 8px;border:1px solid #ddd"><span style="background:${badgeColor};color:${badgeText};padding:2px 8px;border-radius:4px;font-size:8pt;font-weight:bold">${tipo}</span></td>
+                <td style="width:100px;font-weight:bold;padding:4px 8px;border:1px solid #ddd">Zona</td><td style="padding:4px 8px;border:1px solid #ddd">${escapeHTML(reg.zona || '-')}</td></tr>
+                <tr><td style="font-weight:bold;padding:4px 8px;border:1px solid #ddd">Unidad</td><td style="padding:4px 8px;border:1px solid #ddd">${escapeHTML(reg.unidad)}</td>
+                <td style="font-weight:bold;padding:4px 8px;border:1px solid #ddd">Fecha</td><td style="padding:4px 8px;border:1px solid #ddd">${escapeHTML(reg.fecha)}</td></tr>
+                </table>
+            </div></div>`;
+
+        // Pastoreo
+        if (datos.pastoreo && datos.pastoreo.length > 0) {
+            html += `<div style="border:1px solid #ddd;border-radius:6px;margin-bottom:12px;overflow:hidden">
+                <div style="background:#f5f5f0;padding:8px 12px;font-weight:bold;font-size:10pt;border-bottom:1px solid #ddd">Grado de Pastoreo</div>
+                <div style="padding:10px 12px">`;
+            datos.pastoreo.forEach((p, i) => {
+                html += `<span style="background:#5b8c5a;color:#fff;padding:2px 8px;border-radius:4px;font-size:9pt;margin-right:4px">Punto ${i+1}: ${escapeHTML(p)}</span>`;
+            });
+            if (datos.observacionPastoreo) {
+                const obs = datos.observacionPastoreo;
+                html += `<table style="width:100%;border-collapse:collapse;font-size:9pt;margin-top:8px">
+                    <tr><th style="background:#1a3d2e;color:#fff;padding:4px 8px;border:1px solid #ddd">Señal paso</th><th style="background:#1a3d2e;color:#fff;padding:4px 8px;border:1px solid #ddd">Veredas</th><th style="background:#1a3d2e;color:#fff;padding:4px 8px;border:1px solid #ddd">Cagarrutas</th></tr>
+                    <tr><td style="text-align:center;padding:4px 8px;border:1px solid #ddd">${escapeHTML(obs.senal || '-')}</td><td style="text-align:center;padding:4px 8px;border:1px solid #ddd">${escapeHTML(obs.veredas || '-')}</td><td style="text-align:center;padding:4px 8px;border:1px solid #ddd">${escapeHTML(obs.cagarrutas || '-')}</td></tr></table>`;
+            }
+            html += '</div></div>';
+        }
+
+        // Plantas (EI)
+        if (tipo === 'EI' && datos.plantas && datos.plantas.length > 0) {
+            html += `<div style="border:1px solid #ddd;border-radius:6px;margin-bottom:12px;overflow:hidden">
+                <div style="background:#f5f5f0;padding:8px 12px;font-weight:bold;font-size:10pt;border-bottom:1px solid #ddd">Plantas — Media: ${escapeHTML(datos.plantasMedia || '-')}</div>
+                <div style="padding:10px 12px"><table style="width:100%;border-collapse:collapse;font-size:8pt">
+                <tr><th style="background:#1a3d2e;color:#fff;padding:3px 6px;border:1px solid #ddd">Especie</th>`;
+            for (let i = 1; i <= 10; i++) html += `<th style="background:#1a3d2e;color:#fff;padding:3px 4px;border:1px solid #ddd">N${i}</th>`;
+            html += '<th style="background:#1a3d2e;color:#fff;padding:3px 6px;border:1px solid #ddd">Media</th></tr>';
+            datos.plantas.forEach(pl => {
+                html += `<tr><td style="padding:3px 6px;border:1px solid #ddd"><em>${escapeHTML(pl.nombre || '-')}</em></td>`;
+                (pl.notas || []).forEach(n => { html += `<td style="text-align:center;padding:3px 4px;border:1px solid #ddd">${n}</td>`; });
+                html += `<td style="text-align:center;font-weight:bold;padding:3px 6px;border:1px solid #ddd">${pl.media || '-'}</td></tr>`;
+            });
+            html += '</table></div></div>';
+        }
+
+        // Palatables
+        if (datos.palatables && datos.palatables.length > 0) {
+            html += `<div style="border:1px solid #ddd;border-radius:6px;margin-bottom:12px;overflow:hidden">
+                <div style="background:#f5f5f0;padding:8px 12px;font-weight:bold;font-size:10pt;border-bottom:1px solid #ddd">Palatables — Media: ${escapeHTML(datos.palatablesMedia || '-')}</div>
+                <div style="padding:10px 12px"><table style="width:100%;border-collapse:collapse;font-size:8pt">
+                <tr><th style="background:#1a3d2e;color:#fff;padding:3px 6px;border:1px solid #ddd">Especie</th>`;
+            for (let i = 1; i <= 15; i++) html += `<th style="background:#1a3d2e;color:#fff;padding:3px 4px;border:1px solid #ddd">${i}</th>`;
+            html += '<th style="background:#1a3d2e;color:#fff;padding:3px 6px;border:1px solid #ddd">Media</th></tr>';
+            datos.palatables.forEach(pl => {
+                html += `<tr><td style="padding:3px 6px;border:1px solid #ddd"><em>${escapeHTML(pl.nombre || '-')}</em></td>`;
+                (pl.notas || []).forEach(n => { html += `<td style="text-align:center;padding:3px 4px;border:1px solid #ddd">${n}</td>`; });
+                html += `<td style="text-align:center;font-weight:bold;padding:3px 6px;border:1px solid #ddd">${pl.media || '-'}</td></tr>`;
+            });
+            html += '</table></div></div>';
+        }
+
+        // Herbáceas
+        if (datos.herbaceas && datos.herbaceas.length > 0) {
+            html += `<div style="border:1px solid #ddd;border-radius:6px;margin-bottom:12px;overflow:hidden">
+                <div style="background:#f5f5f0;padding:8px 12px;font-weight:bold;font-size:10pt;border-bottom:1px solid #ddd">Herbáceas — Media: ${escapeHTML(datos.herbaceasMedia || '-')}</div>
+                <div style="padding:10px 12px"><table style="width:100%;border-collapse:collapse;font-size:9pt"><tr>`;
+            datos.herbaceas.forEach((h, i) => { html += `<th style="background:#1a3d2e;color:#fff;padding:4px 8px;border:1px solid #ddd">H${i+1}</th>`; });
+            html += '</tr><tr>';
+            datos.herbaceas.forEach(h => { html += `<td style="text-align:center;padding:4px 8px;border:1px solid #ddd">${h}</td>`; });
+            html += '</tr></table></div></div>';
+        }
+
+        // Matorral
+        if (datos.matorral) {
+            const mat = datos.matorral;
+            html += `<div style="border:1px solid #ddd;border-radius:6px;margin-bottom:12px;overflow:hidden">
+                <div style="background:#f5f5f0;padding:8px 12px;font-weight:bold;font-size:10pt;border-bottom:1px solid #ddd">Matorralización</div>
+                <div style="padding:10px 12px"><table style="width:100%;border-collapse:collapse;font-size:9pt">
+                <tr><th style="background:#1a3d2e;color:#fff;padding:4px 8px;border:1px solid #ddd">Punto</th><th style="background:#1a3d2e;color:#fff;padding:4px 8px;border:1px solid #ddd">Cobertura (%)</th><th style="background:#1a3d2e;color:#fff;padding:4px 8px;border:1px solid #ddd">Altura (cm)</th><th style="background:#1a3d2e;color:#fff;padding:4px 8px;border:1px solid #ddd">Especie</th></tr>`;
+            for (let p = 1; p <= 2; p++) {
+                const pt = mat['punto' + p] || {};
+                html += `<tr><td style="padding:4px 8px;border:1px solid #ddd">Punto ${p}</td><td style="padding:4px 8px;border:1px solid #ddd">${escapeHTML(pt.cobertura || '-')}</td><td style="padding:4px 8px;border:1px solid #ddd">${escapeHTML(pt.altura || '-')}</td><td style="padding:4px 8px;border:1px solid #ddd">${escapeHTML(pt.especie || '-')}</td></tr>`;
+            }
+            html += `<tr style="font-weight:bold"><td style="padding:4px 8px;border:1px solid #ddd">Media</td><td style="padding:4px 8px;border:1px solid #ddd">${mat.mediaCob || '-'}%</td><td style="padding:4px 8px;border:1px solid #ddd">${mat.mediaAlt || '-'} cm</td><td style="padding:4px 8px;border:1px solid #ddd">Vol: ${escapeHTML(mat.volumen || '-')}</td></tr>`;
+            html += '</table></div></div>';
+        }
+
+        // Observaciones
+        if (datos.observaciones) {
+            html += `<div style="border:1px solid #ddd;border-radius:6px;margin-bottom:12px;overflow:hidden">
+                <div style="background:#f5f5f0;padding:8px 12px;font-weight:bold;font-size:10pt;border-bottom:1px solid #ddd">Observaciones</div>
+                <div style="padding:10px 12px">${escapeHTML(datos.observaciones).replace(/\n/g, '<br>')}</div></div>`;
+        }
+
+        // Fotos (desde IndexedDB + memory cache)
+        const fotoCodes = (datos.fotos || '').split(',').map(s => s.trim()).filter(Boolean);
+        if (fotoCodes.length > 0) {
+            html += `<div style="border:1px solid #ddd;border-radius:6px;margin-bottom:12px;overflow:hidden">
+                <div style="background:#f5f5f0;padding:8px 12px;font-weight:bold;font-size:10pt;border-bottom:1px solid #ddd">Fotos (${fotoCodes.length})</div>
+                <div style="padding:10px 12px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px">`;
+            fotoCodes.forEach(code => {
+                const dataUrl = state.fotosCacheMemoria[code];
+                if (dataUrl) {
+                    html += `<div><img src="${dataUrl}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:4px"><small style="display:block;text-align:center;font-size:7pt;color:#999">${escapeHTML(code)}</small></div>`;
+                } else {
+                    html += `<div style="background:#eee;padding:8px;border-radius:4px;text-align:center;font-size:8pt;color:#999">${escapeHTML(code)}</div>`;
+                }
+            });
+            html += '</div></div>';
+        }
+
+        html += '</div>';
+        return html;
+    }
+
+    function abrirVentanaPDF(htmlContent, titulo) {
+        const win = window.open('', '_blank');
+        if (!win) { showToast('Permite ventanas emergentes para PDF', 'error'); return; }
+        win.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+            <title>${escapeHTML(titulo)}</title>
+            <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,sans-serif;font-size:11pt;color:#333;padding:20px}
+            .page-break{page-break-before:always}
+            @media print{body{padding:0}.no-print{display:none!important}.page-break{page-break-before:always}}</style>
+            </head><body>
+            <div class="no-print" style="text-align:center;margin-bottom:20px">
+                <button onclick="window.print()" style="padding:10px 30px;font-size:14pt;background:#1a3d2e;color:#fff;border:none;border-radius:8px;cursor:pointer">Imprimir / Guardar PDF</button>
+            </div>
+            ${htmlContent}</body></html>`);
+        win.document.close();
+    }
+
+    window.exportarPDF = async function(id, local) {
+        let registro = null;
+        if (local) {
+            const registros = JSON.parse(localStorage.getItem('rapca_registros') || '[]');
+            registro = registros.find(r => r.id === id);
+        } else {
+            try {
+                const res = await fetch(CFG.apiUrl + '/registros.php?id=' + id, {
+                    headers: { 'X-CSRF-Token': CFG.csrf }
+                });
+                const data = await res.json();
+                registro = data.registro || (data.registros || [])[0];
+            } catch(e) {
+                // Intentar desde local
+                const registros = JSON.parse(localStorage.getItem('rapca_registros') || '[]');
+                registro = registros.find(r => r.id === id);
+            }
+        }
+        if (!registro) { showToast('Registro no encontrado', 'error'); return; }
+        const html = generarHTMLRegistro(registro);
+        abrirVentanaPDF(html, 'RAPCA — ' + registro.tipo + ' ' + registro.unidad);
+    };
+
+    window.exportarTodosPDF = async function() {
+        showLoading(true);
+        let allRegs = [];
+        try {
+            const res = await fetch(CFG.apiUrl + '/registros.php', {
+                headers: { 'X-CSRF-Token': CFG.csrf }
+            });
+            const data = await res.json();
+            allRegs = data.registros || [];
+        } catch(e) {}
+        // Agregar locales no sincronizados
+        const locales = JSON.parse(localStorage.getItem('rapca_registros') || '[]').filter(r => !r.enviado);
+        allRegs = [...locales, ...allRegs];
+
+        if (allRegs.length === 0) { showLoading(false); showToast('Sin registros', 'error'); return; }
+
+        let html = '';
+        allRegs.forEach((r, idx) => {
+            if (idx > 0) html += '<div class="page-break"></div>';
+            html += generarHTMLRegistro(r);
+        });
+        showLoading(false);
+        abrirVentanaPDF(html, 'RAPCA — Informe Completo (' + allRegs.length + ' registros)');
+    };
 
     // ==============================================================
     // ONLINE/OFFLINE

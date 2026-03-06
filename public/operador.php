@@ -419,6 +419,7 @@ $csrf = $_SESSION['csrf_token'];
         <div id="panel-lista"></div>
         <div class="form-actions">
             <button class="btn-secondary" onclick="syncPending()">&#128259; Sincronizar todo</button>
+            <button class="btn-secondary" onclick="exportarTodosPDF()">&#128196; Exportar PDF</button>
         </div>
     </div>
 </div>
@@ -439,11 +440,22 @@ $csrf = $_SESSION['csrf_token'];
 
 <!-- ========== PREVIEW MODAL ========== -->
 <div id="preview-modal" class="preview-modal">
-    <canvas id="preview-canvas"></canvas>
+    <div id="preview-container" class="preview-container">
+        <canvas id="preview-canvas"></canvas>
+    </div>
+    <div id="preview-tools" class="preview-tools">
+        <div class="tools-row">
+            <label>Tamaño: <input type="range" id="circleSize" min="80" max="600" value="200"></label>
+            <button class="btn-undo" onclick="deshacerAnotacion()">&#8630; Deshacer</button>
+        </div>
+        <div class="tools-row">
+            <input type="text" id="annotationText" placeholder="Descripción del punto..." class="annotation-input">
+        </div>
+    </div>
     <div class="preview-controls">
         <button class="btn-secondary" onclick="cerrarPreview()">&#128247; Retomar</button>
-        <button class="btn-annotate" onclick="toggleAnotacion()">&#9998; Anotar</button>
-        <button class="btn-save" onclick="aceptarFoto()">&#10004; Aceptar</button>
+        <button class="btn-annotate" id="btnAnotar" onclick="toggleAnotacion()">&#128308; Anotar</button>
+        <button class="btn-save" id="btnAceptar" onclick="aceptarFoto()">&#10004; Aceptar</button>
     </div>
 </div>
 
