@@ -1257,10 +1257,7 @@ function capturarYGenerarPDF(infra,unidadId,lat,lon,kmlExtData){
 
   function generarConImagen(imgData){
     var html=generarHTMLMapaPDF(infra,unidadId,lat,lon,imgData,zoom,kmlExtData);
-    var w=window.open('','_blank');
-    if(!w){showToast('Permite ventanas emergentes para generar PDF','error');showLoading(false);return;}
-    w.document.write(html);
-    w.document.close();
+    abrirVentanaPDF(html,'Plano — '+(unidadId||'Mapa'));
     showLoading(false);
     document.getElementById('mapa-pdf-panel').style.display='none';
   }
@@ -1807,16 +1804,22 @@ function dibujarAnotacionesEnCanvas(ctx,w,h){
 }
 function initPreviewListeners(){
   var prev=document.getElementById('previewCanvas');
+  if(!prev)return;
   function handleTap(cx,cy){
     if(!modoAnotacion)return;
     var rect=prev.getBoundingClientRect();
-    // Usar dimensiones internas del canvas (no CSS) para escalar correctamente
+    if(rect.width===0||rect.height===0)return;
+    // Coordenadas relativas al canvas visual
+    var relX=cx-rect.left;
+    var relY=cy-rect.top;
+    // Escalar de visual a buffer del canvas
     var scaleX=prev.width/rect.width;
     var scaleY=prev.height/rect.height;
-    var canvasX=(cx-rect.left)*scaleX;
-    var canvasY=(cy-rect.top)*scaleY;
+    var canvasX=relX*scaleX;
+    var canvasY=relY*scaleY;
     // Convertir de coordenadas del canvas preview a coordenadas originales (3060x4080)
     var s=prev.width/3060;
+    if(s===0)s=1;
     var fullX=canvasX/s;
     var fullY=canvasY/s;
     var radio=parseInt(document.getElementById('circleSize').value)||200;
@@ -1826,8 +1829,19 @@ function initPreviewListeners(){
     dibujarVistaPrevia();
     showToast('Punto '+anotaciones.length+' marcado','success');
   }
-  prev.addEventListener('click',function(e){handleTap(e.clientX,e.clientY);});
-  prev.addEventListener('touchstart',function(e){if(!modoAnotacion)return;e.preventDefault();var t=e.touches[0];handleTap(t.clientX,t.clientY);},{passive:false});
+  // Usar touchend en vez de touchstart para mejor compatibilidad móvil
+  prev.addEventListener('touchend',function(e){
+    if(!modoAnotacion)return;
+    e.preventDefault();
+    var t=e.changedTouches[0];
+    handleTap(t.clientX,t.clientY);
+  },{passive:false});
+  // Click para desktop
+  prev.addEventListener('click',function(e){
+    // Evitar doble disparo si ya se manejó por touch
+    if(e.sourceCapabilities&&e.sourceCapabilities.firesTouchEvents)return;
+    handleTap(e.clientX,e.clientY);
+  });
 }
 
 function agregarFotoALista(c){var lId,iId,pre=(camaraTipo==='VP')?'vp':(camaraTipo==='EL')?'el':'ev';if(camaraSubtipo==='general'){lId=pre+'-fotos-lista';iId=pre+'-fotos';}else if(camaraSubtipo==='W1'){lId=pre+'-fc1-lista';iId=pre+'-fc1';}else{lId=pre+'-fc2-lista';iId=pre+'-fc2';}var span=document.createElement('span');span.className='foto-tag';span.textContent=c;document.getElementById(lId).appendChild(span);var inp=document.getElementById(iId);inp.value=inp.value?(inp.value+', '+c):c;}
@@ -2653,20 +2667,41 @@ function generarHTMLRegistroConFotos(r,fotos){
   return h;
 }
 
+function abrirVentanaPDF(htmlContent,titulo){
+  // Intentar window.open primero
+  var w=window.open('','_blank');
+  if(w){
+    w.document.write(htmlContent);
+    w.document.close();
+    return;
+  }
+  // Fallback para PWA standalone: usar overlay con iframe
+  var overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;background:#fff;display:flex;flex-direction:column';
+  var toolbar=document.createElement('div');
+  toolbar.style.cssText='display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#1a3d2e;flex-shrink:0';
+  toolbar.innerHTML='<span style="color:#fff;font-weight:bold;font-size:.9rem">'+(titulo||'PDF')+'</span><div><button id="pdfPrintBtn" style="background:#27ae60;color:#fff;border:none;padding:8px 16px;border-radius:6px;margin-right:8px;cursor:pointer;font-size:.9rem">🖨️ Imprimir</button><button id="pdfCloseBtn" style="background:#e74c3c;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:.9rem">✖ Cerrar</button></div>';
+  overlay.appendChild(toolbar);
+  var iframe=document.createElement('iframe');
+  iframe.style.cssText='flex:1;border:none;width:100%';
+  overlay.appendChild(iframe);
+  document.body.appendChild(overlay);
+  var idoc=iframe.contentDocument||iframe.contentWindow.document;
+  idoc.open();idoc.write(htmlContent.replace(/<script>.*?<\/script>/g,''));idoc.close();
+  toolbar.querySelector('#pdfPrintBtn').onclick=function(){iframe.contentWindow.print();};
+  toolbar.querySelector('#pdfCloseBtn').onclick=function(){document.body.removeChild(overlay);};
+}
+
 async function exportarPDF(id){
   showLoading(true);
-  var rs=getRegistros(),r=rs.find(function(x){return x.id===id;});
-  if(!r){showLoading(false);return;}
-  
-  // Obtener fotos ANTES de generar HTML
-  var fotos=await obtenerTodasLasFotos();
-  console.log('Fotos para PDF:',Object.keys(fotos));
-  
-  var html=generarHTMLRegistroConFotos(r,fotos);
-  var w=window.open('','_blank');
-  if(!w){showLoading(false);showToast('Permite ventanas emergentes para generar PDF','error');return;}
-  w.document.write('<!DOCTYPE html><html><head><title>RAPCA '+r.tipo+' '+r.unidad+'</title><style>@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}img{max-width:100%;height:auto;}}</style></head><body>'+html+'<script>setTimeout(function(){window.print();},1000);<\/script></body></html>');
-  w.document.close();
+  try{
+    var rs=getRegistros(),r=rs.find(function(x){return x.id===id;});
+    if(!r){showLoading(false);return;}
+    var fotos=await obtenerTodasLasFotos();
+    var html=generarHTMLRegistroConFotos(r,fotos);
+    var fullHTML='<!DOCTYPE html><html><head><title>RAPCA '+r.tipo+' '+r.unidad+'</title><style>@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}img{max-width:100%;height:auto;}}</style></head><body>'+html+'<script>setTimeout(function(){window.print();},1000);<\/script></body></html>';
+    abrirVentanaPDF(fullHTML,'PDF — '+r.tipo+' '+r.unidad);
+  }catch(e){console.error('Error exportarPDF:',e);showToast('Error al generar PDF','error');}
   showLoading(false);
 }
 
@@ -2674,20 +2709,16 @@ async function exportarTodosPDF(){
   var rs=getRegistrosUsuario();
   if(rs.length===0){showToast('Sin registros','info');return;}
   showLoading(true);
-  
-  var fotos=await obtenerTodasLasFotos();
-  console.log('Fotos para PDF múltiple:',Object.keys(fotos));
-  
-  var w=window.open('','_blank');
-  if(!w){showLoading(false);showToast('Permite ventanas emergentes para generar PDF','error');return;}
-  var h='<!DOCTYPE html><html><head><title>RAPCA</title><style>@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}img{max-width:100%;height:auto;}.pb{page-break-after:always}}</style></head><body>';
-  for(var i=0;i<rs.length;i++){
-    h+=generarHTMLRegistroConFotos(rs[i],fotos);
-    if(i<rs.length-1)h+='<div class="pb"></div>';
-  }
-  h+='<script>setTimeout(function(){window.print();},1000);<\/script></body></html>';
-  w.document.write(h);
-  w.document.close();
+  try{
+    var fotos=await obtenerTodasLasFotos();
+    var h='<!DOCTYPE html><html><head><title>RAPCA</title><style>@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}img{max-width:100%;height:auto;}.pb{page-break-after:always}}</style></head><body>';
+    for(var i=0;i<rs.length;i++){
+      h+=generarHTMLRegistroConFotos(rs[i],fotos);
+      if(i<rs.length-1)h+='<div class="pb"></div>';
+    }
+    h+='<script>setTimeout(function(){window.print();},1000);<\/script></body></html>';
+    abrirVentanaPDF(h,'PDF — Todos los registros');
+  }catch(e){console.error('Error exportarTodosPDF:',e);showToast('Error al generar PDF','error');}
   showLoading(false);
 }
 
